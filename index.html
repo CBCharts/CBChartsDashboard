@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080d14">
+  <title>CBCharts Market Dashboard</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand"><div class="brand-mark">CB</div><div><div class="brand-name">CBCharts</div><div class="brand-sub">Market Intelligence</div></div></div>
+    <nav class="nav-list">
+      <button class="nav-item active" data-view="snapshot"><span>◫</span><b>Snapshot</b></button>
+      <button class="nav-item" data-view="timelapse"><span>▶</span><b>Timelapse</b></button>
+      <button class="nav-item" data-view="repos"><span>⌘</span><b>Repo's</b></button>
+      <button class="nav-item" data-view="thinkscript"><span>ƒ</span><b>ThinkScript Generator</b></button>
+      <button class="nav-item" data-view="howto"><span>?</span><b>How-To</b></button>
+    </nav>
+    <div class="sidebar-footer"><div class="status-row"><i id="connectionDot"></i><span id="connectionText">Connecting</span></div><small id="lastRefresh">Waiting for data…</small></div>
+  </aside>
+
+  <main class="main-pane">
+    <section class="market-overview">
+      <div class="overview-toolbar">
+        <div><div class="eyebrow">Live market overview</div><h1 id="pageTitle">Snapshot</h1></div>
+        <div class="toolbar-controls">
+          <label><span>Expiration bucket</span><select id="bucketSelect"></select></label>
+          <label><span>Focus Greek</span><select id="greekSelect"><option>GEX</option><option>CEX</option><option>DEX</option><option>VEX</option></select></label>
+          <button id="refreshButton" class="ghost-button">Refresh</button>
+        </div>
+      </div>
+      <div id="gaugeGrid" class="gauge-grid"></div>
+      <div id="overviewError" class="inline-error hidden"></div>
+    </section>
+
+    <div class="view-stack">
+      <section id="view-snapshot" class="view active">
+        <header class="section-heading">
+          <div><div class="eyebrow">Current positioning</div><h2>Strike snapshot</h2><p>Live Voltra strike distribution and the latest Brent Black-Scholes Plotly output.</p></div>
+          <label><span>Bar metric</span><select id="snapshotMetric"><option value="volume">Volume</option><option value="oi">Open interest</option><option value="adjusted">Adjusted volume</option><option value="totalVolume">Total volume</option><option value="adjustedSum">Adjusted sum</option></select></label>
+        </header>
+        <div class="snapshot-grid">
+          <article class="panel">
+            <div class="panel-header"><div><div class="panel-kicker">Voltra</div><h3 id="voltraTitle">Volume by strike</h3></div><small id="voltraTimestamp">—</small></div>
+            <div id="voltraChart" class="chart tall-chart"></div><div id="voltraError" class="inline-error hidden"></div>
+          </article>
+          <article class="panel visual-panel">
+            <div class="panel-header"><div><div class="panel-kicker">BrentBSVisuals</div><h3 id="visualTitle">Latest model visualization</h3></div><a id="visualSourceLink" target="_blank" rel="noopener">Source</a></div>
+            <div id="visualLoading" class="loading">Loading Plotly HTML…</div>
+            <iframe id="visualFrame" title="Latest Brent BS Plotly chart" sandbox="allow-scripts allow-same-origin"></iframe>
+            <div id="visualError" class="inline-error hidden"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="view-timelapse" class="view">
+        <header class="section-heading">
+          <div><div class="eyebrow">Historical flow</div><h2>Ranked level timelapse</h2><p>Tracks Call 1–5 and Put 1–5 strike levels through the selected trading session.</p></div>
+          <label><span>Trading date</span><input id="historyDate" type="date" value="2026-08-20"></label>
+        </header>
+        <article class="panel">
+          <div class="timelapse-toolbar"><div><button id="playButton" class="primary-button">▶ Play</button><button id="resetButton" class="ghost-button">Reset</button></div><div class="timeline-wrap"><input id="timelineSlider" type="range" min="0" max="0" value="0"><span id="timelineLabel">Load a session to begin</span></div></div>
+          <div id="timelapseChart" class="chart flow-chart"></div><div id="timelapseError" class="inline-error hidden"></div>
+        </article>
+        <article class="panel levels-panel"><div class="panel-header"><div><div class="panel-kicker">Current frame</div><h3>Ranked levels</h3></div><small id="frameTheo">Theo ES —</small></div><div id="levelGrid" class="level-grid"></div></article>
+      </section>
+
+      <section id="view-repos" class="view"><header class="section-heading"><div><div class="eyebrow">Data infrastructure</div><h2>Source repositories</h2><p>The dashboard reads the public raw files directly. No separate database or backend is required.</p></div></header><div id="repoGrid" class="repo-grid"></div></section>
+
+      <section id="view-thinkscript" class="view">
+        <header class="section-heading"><div><div class="eyebrow">Export</div><h2>ThinkScript Generator</h2><p>Generate static horizontal levels from the latest frame of a selected historical session.</p></div><label><span>Trading date</span><input id="thinkscriptDate" type="date" value="2026-08-20"></label></header>
+        <article class="panel"><div class="generator-toolbar"><button id="generateThinkscript" class="primary-button">Generate levels</button><button id="copyThinkscript" class="ghost-button">Copy code</button><small id="thinkscriptStatus">Uses the selected bucket + Greek.</small></div><textarea id="thinkscriptOutput" spellcheck="false" placeholder="Generated ThinkScript will appear here…"></textarea><div id="thinkscriptError" class="inline-error hidden"></div></article>
+      </section>
+
+      <section id="view-howto" class="view">
+        <header class="section-heading"><div><div class="eyebrow">Guide</div><h2>How-To</h2><p>Quick reference for using the dashboard and understanding its data.</p></div></header>
+        <div class="howto-grid">
+          <article class="panel prose"><h3>Snapshot</h3><p>Choose an expiration bucket and focus Greek above. Gauges read RatPack, strike bars read Voltra, and the right panel loads BrentBSVisuals.</p></article>
+          <article class="panel prose"><h3>Timelapse</h3><p>Choose a historical date, bucket, and Greek. The chart follows Call 1–5 and Put 1–5 strike levels over time. Press Play to move the active frame.</p></article>
+          <article class="panel prose"><h3>Automatic refresh</h3><p>Live snapshot sources refresh once per minute with cache busting. Historical timelapse data reloads only when its controls change.</p></article>
+          <article class="panel prose"><h3>GitHub Pages</h3><p>This is a static site. GitHub Pages hosts the interface while the browser fetches raw data directly from your existing repositories.</p></article>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+<script src="config.js"></script><script src="app.js"></script>
+</body></html>
