@@ -13,7 +13,9 @@
     voltra: [],
     history: null,
     playTimer: null,
-    frame: 0
+    frame: 0,
+    lastSingleMetric: "volume",
+    multiMetrics: ["volume"]
   };
 
   const plotConfig = {
@@ -157,7 +159,8 @@
 
   function gaugeBound(metric, value, data) {
     if (metric === "Ratio") {
-      return Math.max(1, Math.abs(value) * 1.15);
+      // Keep 1.0 visibly meaningful on the scale.
+      return Math.max(2, Math.abs(value) * 1.15);
     }
 
     const related = ["Total", "Call", "Put"]
@@ -168,61 +171,149 @@
     return Math.max(1, maxMagnitude * 1.08);
   }
 
+  function metricVisualState(metric, value, hasValue) {
+    if (!hasValue) {
+      return {
+        tone: "neutral",
+        status: metric === "Call" || metric === "Put" ? "" : "NO DATA",
+        color: "#718397",
+        background: "rgba(113,131,151,.08)"
+      };
+    }
+
+    if (metric === "Ratio") {
+      if (value < 1) {
+        return {
+          tone: "negative",
+          status: "PUT HEAVY",
+          color: "#ff5f68",
+          background: "rgba(255,95,104,.08)"
+        };
+      }
+
+      if (value > 1) {
+        return {
+          tone: "positive",
+          status: "CALL HEAVY",
+          color: "#31d17c",
+          background: "rgba(49,209,124,.08)"
+        };
+      }
+
+      return {
+        tone: "balanced",
+        status: "BALANCED",
+        color: "#f4b942",
+        background: "rgba(244,185,66,.08)"
+      };
+    }
+
+    const positive = value >= 0;
+    return {
+      tone: positive ? "positive" : "negative",
+      // Total keeps the sign label. Calls/Puts intentionally have no status badge.
+      status: metric === "Total" ? (positive ? "POSITIVE" : "NEGATIVE") : "",
+      color: positive ? "#31d17c" : "#ff5f68",
+      background: positive
+        ? "rgba(49,209,124,.08)"
+        : "rgba(255,95,104,.08)"
+    };
+  }
+
   function renderMetricGauge(metric, data) {
     const value = metricValue(data, metric);
     const hasValue = Number.isFinite(value);
     const safeValue = hasValue ? value : 0;
-    const magnitude = Math.abs(safeValue);
-    const bound = gaugeBound(metric, safeValue, data);
-    const positive = safeValue >= 0;
-    const barColor = positive ? "#31d17c" : "#ff5f68";
-    const backgroundColor = positive
-      ? "rgba(49,209,124,.08)"
-      : "rgba(255,95,104,.08)";
+    const visual = metricVisualState(metric, safeValue, hasValue);
 
-    $(`gauge-greek-${metric}`).textContent = `${state.greek} · ${C.buckets[state.bucket].label}`;
-    $(`gauge-value-${metric}`).textContent = formatNumber(value);
-    $(`gauge-value-${metric}`).classList.toggle("positive", positive && hasValue);
-    $(`gauge-value-${metric}`).classList.toggle("negative", !positive && hasValue);
-    $(`gauge-sign-${metric}`).textContent = !hasValue
-      ? "NO DATA"
-      : positive
-        ? "POSITIVE"
-        : "NEGATIVE";
-    $(`gauge-sign-${metric}`).className = !hasValue
-      ? "gauge-sign"
-      : `gauge-sign ${positive ? "positive" : "negative"}`;
+    const gaugeValue = metric === "Ratio"
+      ? Math.max(0, safeValue)
+      : Math.abs(safeValue);
+
+    const bound = gaugeBound(metric, safeValue, data);
+    const signEl = $(`gauge-sign-${metric}`);
+    const valueEl = $(`gauge-value-${metric}`);
+
+    $(`gauge-greek-${metric}`).textContent =
+      `${state.greek} · ${C.buckets[state.bucket].label}`;
+
+    valueEl.textContent = formatNumber(value);
+    valueEl.classList.remove("positive", "negative", "balanced");
+    if (hasValue && visual.tone !== "neutral") {
+      valueEl.classList.add(visual.tone);
+    }
+
+    signEl.textContent = visual.status;
+    signEl.className = "gauge-sign";
+    if (visual.status) {
+      signEl.classList.add(visual.tone);
+    } else {
+      signEl.classList.add("empty");
+    }
+
+    const gauge = {
+      shape: "bullet",
+      axis: {
+        range: [0, bound],
+        visible: metric === "Ratio",
+        tickmode: metric === "Ratio" ? "array" : undefined,
+        tickvals: metric === "Ratio" ? [0, 1, bound] : undefined,
+        ticktext: metric === "Ratio"
+          ? ["0", "1.0", formatNumber(bound)]
+          : undefined,
+        tickfont: metric === "Ratio"
+          ? { size: 8, color: "#7f91a5" }
+          : undefined
+      },
+      bgcolor: "rgba(255,255,255,.025)",
+      borderwidth: 0,
+      bar: {
+        color: visual.color,
+        thickness: 0.48
+      }
+    };
+
+    if (metric === "Ratio") {
+      gauge.steps = [
+        {
+          range: [0, Math.min(1, bound)],
+          color: "rgba(255,95,104,.07)"
+        },
+        ...(bound > 1 ? [{
+          range: [1, bound],
+          color: "rgba(49,209,124,.07)"
+        }] : [])
+      ];
+      gauge.threshold = {
+        line: { color: "#f4b942", width: 2 },
+        thickness: 0.8,
+        value: 1
+      };
+    } else {
+      gauge.steps = [{ range: [0, bound], color: visual.background }];
+    }
 
     Plotly.react(
       `gauge-${metric}`,
       [{
         type: "indicator",
         mode: "gauge",
-        value: magnitude,
-        gauge: {
-          shape: "bullet",
-          axis: {
-            range: [0, bound],
-            visible: false
-          },
-          bgcolor: "rgba(255,255,255,.025)",
-          borderwidth: 0,
-          bar: {
-            color: barColor,
-            thickness: 0.48
-          },
-          steps: [{ range: [0, bound], color: backgroundColor }]
-        }
+        value: gaugeValue,
+        gauge
       }],
       {
         paper_bgcolor: "rgba(0,0,0,0)",
-        margin: { l: 12, r: 12, t: 2, b: 6 },
-        height: 42
+        margin: {
+          l: 12,
+          r: 12,
+          t: metric === "Ratio" ? 5 : 2,
+          b: metric === "Ratio" ? 10 : 6
+        },
+        height: metric === "Ratio" ? 50 : 42
       },
       { ...plotConfig, displayModeBar: false }
     );
   }
-
   async function loadGauges() {
     clearError("overviewError");
 
@@ -245,42 +336,136 @@
   // VOLTRA SNAPSHOT — ONLY *_tota.csv files configured in config.js
   // ---------------------------------------------------------------------------
 
-  function metricSpec() {
-    return {
-      volume: {
-        title: "Call / put volume by strike",
-        call: "call_vol_sum",
-        put: "put_vol_sum",
-        callLabel: "Call volume",
-        putLabel: "Put volume"
-      },
-      oi: {
-        title: "Call / put open interest by strike",
-        call: "call_oi_sum",
-        put: "put_oi_sum",
-        callLabel: "Call OI",
-        putLabel: "Put OI"
-      },
-      adjusted: {
-        title: "Adjusted call / put volume by strike",
-        call: "adj_call_vol",
-        put: "adj_put_vol",
-        callLabel: "Adjusted call volume",
-        putLabel: "Adjusted put volume"
-      },
-      totalVolume: {
-        title: "Total volume by strike",
-        single: "total_vol_sum",
-        singleLabel: "Total volume"
-      },
-      adjustedSum: {
-        title: "Adjusted sum by strike",
-        single: "adj_sum",
-        singleLabel: "Adjusted sum"
-      }
-    }[$("snapshotMetric").value];
+  const VOLTRA_METRICS = {
+    volume: {
+      title: "Call / put volume by strike",
+      shortLabel: "Volume",
+      call: "call_vol_sum",
+      put: "put_vol_sum",
+      callLabel: "Call volume",
+      putLabel: "Put volume"
+    },
+    oi: {
+      title: "Call / put open interest by strike",
+      shortLabel: "Open interest",
+      call: "call_oi_sum",
+      put: "put_oi_sum",
+      callLabel: "Call OI",
+      putLabel: "Put OI"
+    },
+    adjusted: {
+      title: "Adjusted call / put volume by strike",
+      shortLabel: "Adjusted volume",
+      call: "adj_call_vol",
+      put: "adj_put_vol",
+      callLabel: "Adjusted call volume",
+      putLabel: "Adjusted put volume"
+    },
+    totalVolume: {
+      title: "Total volume by strike",
+      shortLabel: "Total volume",
+      single: "total_vol_sum",
+      singleLabel: "Total volume"
+    },
+    adjustedSum: {
+      title: "Adjusted sum by strike",
+      shortLabel: "Adjusted sum",
+      single: "adj_sum",
+      singleLabel: "Adjusted sum"
+    }
+  };
+
+  // Color pairs by plot slot:
+  // 1) blue/red
+  // 2) green/purple
+  // 3) yellow/purple
+  const VOLTRA_COLOR_PAIRS = [
+    { call: "#49a5ff", put: "#ff6670" },
+    { call: "#42d392", put: "#a678ff" },
+    { call: "#f6c84c", put: "#d16dff" }
+  ];
+
+  function metricSpec(metricKey) {
+    return VOLTRA_METRICS[metricKey];
   }
 
+  function selectedVoltraMetrics() {
+    const mode = $("snapshotMetric").value;
+
+    if (mode !== "multi") {
+      return [mode];
+    }
+
+    const selected = [...document.querySelectorAll(
+      '#multiMetricOptions input[type="checkbox"]:checked'
+    )].map((input) => input.value);
+
+    return selected.slice(0, 3);
+  }
+
+  function updateMultiMetricUI(message = "") {
+    const isMulti = $("snapshotMetric").value === "multi";
+    $("multiMetricPanel").classList.toggle("hidden", !isMulti);
+
+    if (!isMulti) return;
+
+    const selected = selectedVoltraMetrics();
+    $("multiMetricCount").textContent =
+      message || `${selected.length}/3 selected`;
+
+    document.querySelectorAll(
+      '#multiMetricOptions input[type="checkbox"]'
+    ).forEach((input) => {
+      input.disabled = !input.checked && selected.length >= 3;
+      input.closest(".multi-metric-option")?.classList.toggle(
+        "disabled",
+        input.disabled
+      );
+    });
+  }
+
+  function initializeMultiMetricOptions() {
+    const options = Object.entries(VOLTRA_METRICS).map(([key, spec]) => `
+      <label class="multi-metric-option">
+        <input type="checkbox" value="${key}">
+        <span>${spec.shortLabel}</span>
+      </label>
+    `).join("");
+
+    $("multiMetricOptions").innerHTML = options;
+
+    document.querySelectorAll(
+      '#multiMetricOptions input[type="checkbox"]'
+    ).forEach((input) => {
+      input.checked = state.multiMetrics.includes(input.value);
+
+      input.addEventListener("change", () => {
+        let selected = selectedVoltraMetrics();
+
+        // Multi must always contain at least one metric.
+        if (!selected.length) {
+          input.checked = true;
+          selected = [input.value];
+          updateMultiMetricUI("At least 1 metric is required");
+          return;
+        }
+
+        // Defensive cap even if disabled-state timing is bypassed.
+        if (selected.length > 3) {
+          input.checked = false;
+          selected = selectedVoltraMetrics();
+          updateMultiMetricUI("Maximum 3 metrics");
+          return;
+        }
+
+        state.multiMetrics = selected;
+        updateMultiMetricUI();
+        renderVoltra();
+      });
+    });
+
+    updateMultiMetricUI();
+  }
   function renderVoltra() {
     const sourceRows = state.voltra.filter((row) =>
       row.timestamp &&
@@ -289,17 +474,31 @@
 
     if (!sourceRows.length) {
       Plotly.purge("voltraChart");
-      showError("voltraError", "The selected Voltra file does not contain usable strike data.");
+      showError(
+        "voltraError",
+        "The selected Voltra file does not contain usable strike data."
+      );
       return;
     }
 
     clearError("voltraError");
 
-    const spec = metricSpec();
-    $("voltraTitle").textContent = spec.title;
+    const selectedKeys = selectedVoltraMetrics();
+    const specs = selectedKeys
+      .map((key) => ({ key, ...metricSpec(key) }))
+      .filter((spec) => spec.title);
 
-    // Snapshot means the newest timestamp only. This also prevents an older
-    // timestamp in the same CSV from creating duplicate strike bars.
+    if (!specs.length) {
+      Plotly.purge("voltraChart");
+      showError("voltraError", "Select at least one bar metric.");
+      return;
+    }
+
+    $("voltraTitle").textContent = specs.length === 1
+      ? specs[0].title
+      : specs.map((spec) => spec.shortLabel).join(" + ") + " by strike";
+
+    // Snapshot = newest timestamp only.
     const latestTimestamp = sourceRows
       .map((row) => String(row.timestamp))
       .sort()
@@ -309,14 +508,8 @@
       (row) => String(row.timestamp) === latestTimestamp
     );
 
-    const theoRow = latestRows.find((row) =>
-      Number.isFinite(Number(row["Theo ES"]))
-    );
-    const theoES = Number(theoRow?.["Theo ES"]);
-
-    // Only keep strikes that have actual data for the metric the user selected.
-    // Zero/blank call + put rows are intentionally omitted from the Y-axis.
-    const hasSelectedMetricData = (row) => {
+    // A strike remains on the graph if ANY selected metric has non-zero data.
+    const metricHasData = (row, spec) => {
       if (spec.single) {
         const value = Number(row[spec.single]);
         return Number.isFinite(value) && value !== 0;
@@ -332,62 +525,84 @@
     };
 
     const activeRows = latestRows
-      .filter(hasSelectedMetricData)
+      .filter((row) => specs.some((spec) => metricHasData(row, spec)))
       .sort((a, b) => Number(a.strikePrice) - Number(b.strikePrice));
 
     if (!activeRows.length) {
       Plotly.purge("voltraChart");
       showError(
         "voltraError",
-        `No non-zero ${spec.title.toLowerCase()} data is available for ${C.buckets[state.bucket].label} at ${latestTimestamp}.`
+        `No non-zero data is available for the selected metric(s) in ${C.buckets[state.bucket].label} at ${latestTimestamp}.`
       );
       return;
     }
 
     const strikes = activeRows.map((row) => Number(row.strikePrice));
+    const theoValues = activeRows.map((row) => {
+      const value = Number(row["Theo ES"]);
+      return Number.isFinite(value) ? value : null;
+    });
 
-    // Use the actual strike spacing for bar thickness while keeping bars readable.
     const strikeDiffs = strikes
       .slice(1)
       .map((strike, index) => strike - strikes[index])
       .filter((diff) => Number.isFinite(diff) && diff > 0)
       .sort((a, b) => a - b);
 
-    const medianStep = strikeDiffs.length
+    const medianStrikeStep = strikeDiffs.length
       ? strikeDiffs[Math.floor(strikeDiffs.length / 2)]
       : 25;
 
-    const barWidth = Math.max(1, Math.min(25, medianStep * 0.72));
     const traces = [];
+    const metricCount = specs.length;
 
-    if (spec.single) {
-      const values = activeRows.map((row) => Number(row[spec.single]) || 0);
+    specs.forEach((spec, metricIndex) => {
+      const colors = VOLTRA_COLOR_PAIRS[metricIndex];
+      const widthFactor = metricCount === 1 ? 0.72 : metricCount === 2 ? 0.34 : 0.22;
+      const barWidth = Math.max(
+        0.5,
+        Math.min(25, medianStrikeStep * widthFactor)
+      );
 
-      traces.push({
-        type: "bar",
-        orientation: "h",
-        name: spec.singleLabel,
-        y: strikes,
-        x: values,
-        width: barWidth,
-        customdata: values.map(formatNumber),
-        marker: { color: "#5ba7ff" },
-        hovertemplate:
-          `Strike %{y}<br>${spec.singleLabel}: %{customdata}<extra></extra>`
-      });
-    } else {
-      const callValues = activeRows.map((row) => Number(row[spec.call]) || 0);
-      const putValues = activeRows.map((row) => Number(row[spec.put]) || 0);
+      if (spec.single) {
+        const values = activeRows.map((row) => Number(row[spec.single]) || 0);
+
+        traces.push({
+          type: "bar",
+          orientation: "h",
+          name: spec.singleLabel,
+          legendgroup: spec.key,
+          offsetgroup: spec.key,
+          y: strikes,
+          x: values,
+          width: barWidth,
+          customdata: values.map(formatNumber),
+          marker: { color: colors.call },
+          hovertemplate:
+            `Strike %{y}<br>${spec.singleLabel}: %{customdata}<extra></extra>`
+        });
+
+        return;
+      }
+
+      const callValues = activeRows.map(
+        (row) => Number(row[spec.call]) || 0
+      );
+      const putValues = activeRows.map(
+        (row) => Number(row[spec.put]) || 0
+      );
 
       traces.push({
         type: "bar",
         orientation: "h",
         name: spec.callLabel,
+        legendgroup: spec.key,
+        offsetgroup: `${spec.key}-call`,
         y: strikes,
         x: callValues,
         width: barWidth,
         customdata: callValues.map(formatNumber),
-        marker: { color: "#49a5ff" },
+        marker: { color: colors.call },
         hovertemplate:
           `Strike %{y}<br>${spec.callLabel}: %{customdata}<extra></extra>`
       });
@@ -396,29 +611,102 @@
         type: "bar",
         orientation: "h",
         name: spec.putLabel,
+        legendgroup: spec.key,
+        offsetgroup: `${spec.key}-put`,
         y: strikes,
         x: putValues.map((value) => -Math.abs(value)),
         width: barWidth,
-        customdata: putValues.map((value) => formatNumber(Math.abs(value))),
-        marker: { color: "#ff6670" },
+        customdata: putValues.map((value) =>
+          formatNumber(Math.abs(value))
+        ),
+        marker: { color: colors.put },
         hovertemplate:
           `Strike %{y}<br>${spec.putLabel}: %{customdata}<extra></extra>`
       });
+    });
+
+    // Explicit Theo ES trace attached to y2 guarantees the right axis renders.
+    // Markers are tiny and sit on x=0 so there is no full-width reference line.
+    const validTheoPairs = activeRows
+      .map((row) => ({
+        strike: Number(row.strikePrice),
+        theo: Number(row["Theo ES"])
+      }))
+      .filter((pair) => Number.isFinite(pair.theo));
+
+    if (validTheoPairs.length) {
+      traces.push({
+        type: "scatter",
+        mode: "markers",
+        name: "Theo ES",
+        legendgroup: "theo-es",
+        x: validTheoPairs.map(() => 0),
+        y: validTheoPairs.map((pair) => pair.theo),
+        yaxis: "y2",
+        customdata: validTheoPairs.map((pair) => [
+          formatNumber(pair.strike),
+          formatNumber(pair.theo)
+        ]),
+        marker: {
+          color: "#f4b942",
+          size: 5,
+          symbol: "diamond"
+        },
+        hovertemplate:
+          "Strike %{customdata[0]}<br>Theo ES %{customdata[1]}<extra></extra>"
+      });
     }
 
-    const rangeValues = [...strikes];
-    if (Number.isFinite(theoES)) rangeValues.push(theoES);
+    const minStrike = Math.min(...strikes);
+    const maxStrike = Math.max(...strikes);
+    const strikeSpan = Math.max(
+      maxStrike - minStrike,
+      medianStrikeStep
+    );
+    const strikePadding = Math.max(
+      medianStrikeStep * 0.7,
+      strikeSpan * 0.045
+    );
+    const strikeRange = [
+      minStrike - strikePadding,
+      maxStrike + strikePadding
+    ];
 
-    const minY = Math.min(...rangeValues);
-    const maxY = Math.max(...rangeValues);
-    const span = Math.max(maxY - minY, medianStep);
-    const yPadding = Math.max(medianStep * 0.7, span * 0.045);
-    const yRange = [minY - yPadding, maxY + yPadding];
+    const validTheo = theoValues.filter(Number.isFinite);
+    let theoRange = strikeRange;
 
-    // Give each data-bearing strike enough vertical room to remain readable.
+    if (validTheo.length) {
+      const minTheo = Math.min(...validTheo);
+      const maxTheo = Math.max(...validTheo);
+
+      const theoDiffs = validTheo
+        .slice(1)
+        .map((value, index) => value - validTheo[index])
+        .filter((diff) => Number.isFinite(diff) && diff > 0)
+        .sort((a, b) => a - b);
+
+      const medianTheoStep = theoDiffs.length
+        ? theoDiffs[Math.floor(theoDiffs.length / 2)]
+        : medianStrikeStep;
+
+      const theoSpan = Math.max(
+        maxTheo - minTheo,
+        medianTheoStep
+      );
+      const theoPadding = Math.max(
+        medianTheoStep * 0.7,
+        theoSpan * 0.045
+      );
+
+      theoRange = [
+        minTheo - theoPadding,
+        maxTheo + theoPadding
+      ];
+    }
+
     const chartHeight = Math.max(
       480,
-      Math.min(1100, activeRows.length * 27 + 150)
+      Math.min(1100, activeRows.length * 27 + 165)
     );
     $("voltraChart").style.height = `${chartHeight}px`;
 
@@ -427,16 +715,20 @@
       traces,
       {
         ...baseLayout,
-        barmode: "relative",
-        bargap: 0.18,
-        margin: { l: 92, r: 92, t: 24, b: 56 },
+
+        // Multiple selected metrics share the same strike chart.
+        // Plotly groups the traces so up to 3 metrics remain distinguishable.
+        barmode: metricCount > 1 ? "group" : "relative",
+        bargap: metricCount > 1 ? 0.20 : 0.18,
+        bargroupgap: metricCount > 1 ? 0.08 : 0,
+        margin: { l: 92, r: 105, t: 34, b: 56 },
 
         xaxis: {
           ...baseLayout.xaxis,
           title: {
-            text: spec.single
-              ? spec.singleLabel
-              : "Calls (+) / Puts (mirrored)",
+            text: specs.some((spec) => !spec.single)
+              ? "Calls (+) / Puts (mirrored)"
+              : "Value",
             font: { size: 10 }
           },
           tickformat: ",.3~f",
@@ -445,8 +737,7 @@
           automargin: true
         },
 
-        // Real numeric strike axis. Tick labels are restricted to strikes that
-        // actually contain non-zero data for the selected metric.
+        // LEFT: strike.
         yaxis: {
           ...baseLayout.yaxis,
           title: {
@@ -455,7 +746,7 @@
             font: { size: 11 }
           },
           type: "linear",
-          range: yRange,
+          range: strikeRange,
           tickmode: "array",
           tickvals: strikes,
           ticktext: strikes.map(formatNumber),
@@ -465,8 +756,7 @@
           automargin: true
         },
 
-        // Theo ES gets its own clean right-side axis. There is intentionally no
-        // full-width yellow reference line in v0.3.
+        // RIGHT: Theo ES values matched row-for-row to the plotted strikes.
         yaxis2: {
           title: {
             text: "Theo ES",
@@ -476,14 +766,14 @@
           overlaying: "y",
           side: "right",
           type: "linear",
-          range: yRange,
+          range: theoRange,
           tickmode: "array",
-          tickvals: Number.isFinite(theoES) ? [theoES] : [],
-          ticktext: Number.isFinite(theoES) ? [formatNumber(theoES)] : [],
-          tickfont: { size: 10, color: "#f4b942" },
+          tickvals: validTheo,
+          ticktext: validTheo.map(formatNumber),
+          tickfont: { size: 9, color: "#f4b942" },
           tickcolor: "#f4b942",
           ticks: "outside",
-          ticklen: 6,
+          ticklen: 5,
           showgrid: false,
           zeroline: false,
           automargin: true
@@ -492,7 +782,7 @@
         legend: {
           orientation: "h",
           x: 0,
-          y: 1.035,
+          y: 1.045,
           xanchor: "left",
           yanchor: "bottom",
           font: { size: 10 }
@@ -920,7 +1210,27 @@
       if (state.view === "timelapse") await loadHistory();
     });
 
-    $("snapshotMetric").addEventListener("change", renderVoltra);
+    $("snapshotMetric").addEventListener("change", (event) => {
+      const value = event.target.value;
+
+      if (value === "multi") {
+        // Seed Multi with the last single metric if nothing is selected.
+        if (!state.multiMetrics.length) {
+          state.multiMetrics = [state.lastSingleMetric];
+        }
+
+        document.querySelectorAll(
+          '#multiMetricOptions input[type="checkbox"]'
+        ).forEach((input) => {
+          input.checked = state.multiMetrics.includes(input.value);
+        });
+      } else {
+        state.lastSingleMetric = value;
+      }
+
+      updateMultiMetricUI();
+      renderVoltra();
+    });
     $("historyDate").addEventListener("change", loadHistory);
 
     $("timelineSlider").addEventListener("input", (event) => {
@@ -950,6 +1260,7 @@
   async function init() {
     initControls();
     buildGaugeCards();
+    initializeMultiMetricOptions();
     renderRepos();
     wireEvents();
     setConnection(null, "Connecting");

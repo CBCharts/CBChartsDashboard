@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#080d14">
   <title>CBCharts Market Dashboard</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=0.3.0">
+  <link rel="stylesheet" href="styles.css?v=0.4.0">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 </head>
@@ -42,7 +42,26 @@
       <section id="view-snapshot" class="view active">
         <header class="section-heading">
           <div><div class="eyebrow">Current positioning</div><h2>Strike snapshot</h2><p>Live Voltra strike distribution and the latest Brent Black-Scholes Plotly output.</p></div>
-          <label><span>Bar metric</span><select id="snapshotMetric"><option value="volume">Volume</option><option value="oi">Open interest</option><option value="adjusted">Adjusted volume</option><option value="totalVolume">Total volume</option><option value="adjustedSum">Adjusted sum</option></select></label>
+          <div class="snapshot-metric-control">
+            <label>
+              <span>Bar metric</span>
+              <select id="snapshotMetric">
+                <option value="volume">Volume</option>
+                <option value="oi">Open interest</option>
+                <option value="adjusted">Adjusted volume</option>
+                <option value="totalVolume">Total volume</option>
+                <option value="adjustedSum">Adjusted sum</option>
+                <option value="multi">Multi</option>
+              </select>
+            </label>
+            <div id="multiMetricPanel" class="multi-metric-panel hidden">
+              <div class="multi-metric-head">
+                <strong>Multi plots</strong>
+                <span id="multiMetricCount">1/3 selected</span>
+              </div>
+              <div id="multiMetricOptions" class="multi-metric-options"></div>
+            </div>
+          </div>
         </header>
         <div class="snapshot-grid">
           <article class="panel">
@@ -89,5 +108,5 @@
     </div>
   </main>
 </div>
-<script src="config.js?v=0.3.0"></script><script src="app.js?v=0.3.0"></script>
+<script src="config.js?v=0.4.0"></script><script src="app.js?v=0.4.0"></script>
 </body></html>
