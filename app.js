@@ -1510,6 +1510,51 @@
       .filter(Boolean);
   }
 
+  function rankedBarSessionRange(history) {
+    const strikes = [];
+
+    history.frames.forEach((frame) => {
+      history.keys.forEach((key) => {
+        const strike = Number(frame.ranks[key]?.strike);
+        if (Number.isFinite(strike)) {
+          strikes.push(strike);
+        }
+      });
+    });
+
+    if (!strikes.length) {
+      return {
+        range: [0, 1],
+        barWidth: 1,
+        tickSize: 1
+      };
+    }
+
+    const unique = [...new Set(strikes)].sort((a, b) => a - b);
+
+    const diffs = unique
+      .slice(1)
+      .map((strike, index) => strike - unique[index])
+      .filter((diff) => Number.isFinite(diff) && diff > 0)
+      .sort((a, b) => a - b);
+
+    const typicalStep = diffs.length
+      ? diffs[Math.floor(diffs.length / 2)]
+      : 25;
+
+    const minStrike = unique[0];
+    const maxStrike = unique[unique.length - 1];
+    const span = Math.max(maxStrike - minStrike, typicalStep);
+    const padding = Math.max(typicalStep * 1.25, span * 0.05);
+
+    return {
+      range: [minStrike - padding, maxStrike + padding],
+      // Width is measured in Y-axis strike units for horizontal bars.
+      barWidth: Math.max(1, typicalStep * 0.62),
+      tickSize: typicalStep
+    };
+  }
+
   function renderRankedBarFrame(frame, history) {
     const points = rankedBarFrameData(frame, history);
 
@@ -1524,53 +1569,72 @@
 
     clearError("timelapseError");
 
-    // Unique internal Y categories let multiple ranked levels share the same
-    // strike without covering one another. Tick text remains strike-only.
-    const yCategories = points.map(
-      (point) => `${formatNumber(point.strike)}|${point.key}`
-    );
+    const session = rankedBarSessionRange(history);
 
-    const strikeLabels = points.map(
-      (point) => formatNumber(point.strike)
-    );
+    /*
+      IMPORTANT:
+      Y is now the REAL NUMERIC strike price.
 
-    const customData = points.map((point) => [
-      point.key,
-      formatNumber(point.strike),
-      formatNumber(point.value)
-    ]);
+      v0.7 used categorical strings such as:
+          "7700|Call GEX 1"
+
+      That locked each rank to a visual row. In v0.7.1 the actual
+      numeric strike is passed to Plotly, so the bars physically
+      move up/down the strike axis as the timelapse advances.
+    */
+    const traces = points.map((point) => ({
+      type: "bar",
+      orientation: "h",
+      name: point.key,
+      x: [point.value],
+      y: [point.strike],
+      width: [session.barWidth],
+      marker: {
+        color: point.color,
+        line: {
+          color: "rgba(255,255,255,.14)",
+          width: 1
+        }
+      },
+      customdata: [[
+        point.key,
+        formatNumber(point.strike),
+        formatNumber(point.value)
+      ]],
+      text: [point.key],
+      textposition: "auto",
+      insidetextanchor: "middle",
+      cliponaxis: false,
+      hovertemplate:
+        "<b>%{customdata[0]}</b>" +
+        "<br>Strike: %{customdata[1]}" +
+        `<br>${state.greek} Value: %{customdata[2]}` +
+        "<extra></extra>",
+      showlegend: false
+    }));
+
+    // Current frame strike ticks only. The fixed numeric Y-range keeps
+    // movement comparable across the entire session.
+    const currentStrikes = [...new Set(
+      points
+        .map((point) => point.strike)
+        .filter(Number.isFinite)
+    )].sort((a, b) => a - b);
 
     Plotly.react(
       "timelapseChart",
-      [{
-        type: "bar",
-        orientation: "h",
-        name: `${state.greek} ranked values`,
-        x: points.map((point) => point.value),
-        y: yCategories,
-        customdata: customData,
-        text: points.map((point) => point.key),
-        textposition: "auto",
-        insidetextanchor: "middle",
-        cliponaxis: false,
-        marker: {
-          color: points.map((point) => point.color),
-          line: {
-            color: "rgba(255,255,255,.12)",
-            width: 1
-          }
-        },
-        hovertemplate:
-          "<b>%{customdata[0]}</b>" +
-          "<br>Strike: %{customdata[1]}" +
-          `<br>${state.greek} Value: %{customdata[2]}` +
-          "<extra></extra>"
-      }],
+      traces,
       {
         ...baseLayout,
-        barmode: "relative",
-        bargap: 0.22,
-        margin: { l: 86, r: 32, t: 30, b: 58 },
+
+        // If two ranks land on the exact same strike, Plotly groups them
+        // around that strike instead of converting the axis to categories.
+        barmode: "group",
+        bargap: 0.18,
+        bargroupgap: 0.08,
+
+        margin: { l: 86, r: 32, t: 34, b: 60 },
+
         xaxis: {
           ...baseLayout.xaxis,
           title: {
@@ -1581,25 +1645,38 @@
           exponentformat: "none",
           showexponent: "none",
           zeroline: true,
-          zerolinecolor: "rgba(255,255,255,.32)",
-          zerolinewidth: 1
+          zerolinecolor: "rgba(255,255,255,.34)",
+          zerolinewidth: 1,
+          automargin: true
         },
+
         yaxis: {
           ...baseLayout.yaxis,
           title: {
             text: "Strike",
             font: { size: 11 }
           },
-          type: "category",
-          categoryorder: "array",
-          categoryarray: yCategories,
+
+          // Numeric axis is the key fix.
+          type: "linear",
+          range: session.range,
+
+          // Label the 10 current strikes while retaining their true
+          // numeric spacing/position on the axis.
           tickmode: "array",
-          tickvals: yCategories,
-          ticktext: strikeLabels,
-          autorange: "reversed",
+          tickvals: currentStrikes,
+          ticktext: currentStrikes.map(formatNumber),
+
+          tickformat: ",.3~f",
+          exponentformat: "none",
+          showexponent: "none",
+          ticks: "outside",
+          ticklen: 4,
           automargin: true
         },
+
         showlegend: false,
+
         annotations: [{
           xref: "paper",
           yref: "paper",
