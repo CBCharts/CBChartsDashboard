@@ -594,7 +594,58 @@ input[type="date"] {
   padding: 14px 16px 0;
 }
 
-.timelapse-toolbar > div:first-child { display: flex; gap: 8px; }
+.timelapse-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.timelapse-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  margin-left: 4px;
+  border: 1px solid #2a3b50;
+  border-radius: 9px;
+  background: #0b131d;
+}
+
+.timelapse-mode-button {
+  min-height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #8496aa;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .035em;
+}
+
+.timelapse-mode-button:hover {
+  color: #dbe9f6;
+  background: rgba(255,255,255,.045);
+}
+
+.timelapse-mode-button.active {
+  color: #e8f3ff;
+  background: rgba(91,167,255,.16);
+  box-shadow: inset 0 0 0 1px rgba(91,167,255,.28);
+}
+
+.timelapse-chart-meta {
+  display: flex;
+  justify-content: flex-end;
+  min-height: 24px;
+  padding: 8px 16px 0;
+  color: #7f92a8;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
 
 .timeline-wrap {
   flex: 1;
@@ -626,6 +677,12 @@ input[type="date"] {
 .level-chip.put { border-top: 2px solid #ff6670; }
 .level-chip .rank { color: var(--muted); font-size: 9px; text-transform: uppercase; }
 .level-chip .strike { margin-top: 4px; font-weight: 800; font-size: 14px; font-variant-numeric: tabular-nums; }
+.level-chip .level-value {
+  margin-top: 4px;
+  color: #8799ad;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
 
 .repo-grid,
 .howto-grid {

@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#080d14">
   <title>CBCharts Market Dashboard</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=0.6.2">
+  <link rel="stylesheet" href="styles.css?v=0.7.0">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 </head>
@@ -108,12 +108,52 @@
 
       <section id="view-timelapse" class="view">
         <header class="section-heading">
-          <div><div class="eyebrow">Historical flow</div><h2>Ranked level timelapse</h2><p>Tracks Call 1–5 and Put 1–5 strike levels through the selected trading session.</p></div>
+          <div>
+            <div class="eyebrow">Historical flow</div>
+            <h2>Ranked level timelapse</h2>
+            <p>Animate Call 1–5 and Put 1–5 through the selected trading session using level lines or ranked value bars.</p>
+          </div>
           <label><span>Trading date</span><input id="historyDate" type="date" value="2026-08-20"></label>
         </header>
+
         <article class="panel">
-          <div class="timelapse-toolbar"><div><button id="playButton" class="primary-button">▶ Play</button><button id="resetButton" class="ghost-button">Reset</button></div><div class="timeline-wrap"><input id="timelineSlider" type="range" min="0" max="0" value="0"><span id="timelineLabel">Load a session to begin</span></div></div>
-          <div id="timelapseChart" class="chart flow-chart"></div><div id="timelapseError" class="inline-error hidden"></div>
+          <div class="timelapse-toolbar">
+            <div class="timelapse-actions">
+              <button id="playButton" class="primary-button">▶ Play</button>
+              <button id="resetButton" class="ghost-button">Reset</button>
+
+              <div class="timelapse-mode-toggle" role="group" aria-label="Timelapse chart type">
+                <button
+                  type="button"
+                  class="timelapse-mode-button active"
+                  data-mode="levels"
+                  aria-pressed="true"
+                >
+                  Level Lines
+                </button>
+                <button
+                  type="button"
+                  class="timelapse-mode-button"
+                  data-mode="bars"
+                  aria-pressed="false"
+                >
+                  Ranked Bars
+                </button>
+              </div>
+            </div>
+
+            <div class="timeline-wrap">
+              <input id="timelineSlider" type="range" min="0" max="0" value="0">
+              <span id="timelineLabel">Load a session to begin</span>
+            </div>
+          </div>
+
+          <div class="timelapse-chart-meta">
+            <span id="timelapseChartLabel">Ranked level lines</span>
+          </div>
+
+          <div id="timelapseChart" class="chart flow-chart"></div>
+          <div id="timelapseError" class="inline-error hidden"></div>
         </article>
         <article class="panel levels-panel"><div class="panel-header"><div><div class="panel-kicker">Current frame</div><h3>Ranked levels</h3></div><small id="frameTheo">Theo ES —</small></div><div id="levelGrid" class="level-grid"></div></article>
       </section>
@@ -137,5 +177,5 @@
     </div>
   </main>
 </div>
-<script src="config.js?v=0.6.2"></script><script src="app.js?v=0.6.2"></script>
+<script src="config.js?v=0.7.0"></script><script src="app.js?v=0.7.0"></script>
 </body></html>

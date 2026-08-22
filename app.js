@@ -17,6 +17,7 @@
     lastSingleMetric: "volume",
     multiMetrics: ["volume"],
     graphSize: "standard",
+    timelapseMode: "levels",
     spxSpot: null,
     theoEsBasis: null,
     latestPushermanFolders: [],
@@ -1359,14 +1360,59 @@
     };
   }
 
-  function renderHistory(history) {
-    if (!history.frames.length) throw new Error("No matching ranked rows found.");
+  const TIMELAPSE_CALL_COLORS = [
+    "#4ca7ff",
+    "#67b6ff",
+    "#82c4ff",
+    "#9bd1ff",
+    "#b4ddff"
+  ];
 
-    setElementGraphHeight("timelapseChart", 560);
+  const TIMELAPSE_PUT_COLORS = [
+    "#ff626d",
+    "#ff7a83",
+    "#ff929b",
+    "#ffabb1",
+    "#ffc1c6"
+  ];
 
-    const callColors = ["#4ca7ff", "#67b6ff", "#82c4ff", "#9bd1ff", "#b4ddff"];
-    const putColors = ["#ff626d", "#ff7a83", "#ff929b", "#ffabb1", "#ffc1c6"];
+  function timelapseRankColor(key, index) {
+    return key.startsWith("Call")
+      ? TIMELAPSE_CALL_COLORS[index]
+      : TIMELAPSE_PUT_COLORS[index - 5];
+  }
 
+  function updateTimelapseModeButtons() {
+    document.querySelectorAll(".timelapse-mode-button").forEach((button) => {
+      const active = button.dataset.mode === state.timelapseMode;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+
+    const chartLabel = $("timelapseChartLabel");
+
+    if (chartLabel) {
+      chartLabel.textContent =
+        state.timelapseMode === "bars"
+          ? "Ranked value bars"
+          : "Ranked level lines";
+    }
+  }
+
+  function setTimelapseMode(mode) {
+    const nextMode = mode === "bars" ? "bars" : "levels";
+
+    if (state.timelapseMode === nextMode) return;
+
+    state.timelapseMode = nextMode;
+    updateTimelapseModeButtons();
+
+    if (!state.history?.frames.length) return;
+
+    renderHistory(state.history, state.frame);
+  }
+
+  function renderRankedLevelHistory(history) {
     const traces = history.keys.map((key, index) => ({
       type: "scatter",
       mode: "lines",
@@ -1376,25 +1422,21 @@
       connectgaps: false,
       line: {
         width: 1.7,
-        color: key.startsWith("Call") ? callColors[index] : putColors[index - 5]
+        color: timelapseRankColor(key, index)
       },
-      hovertemplate: `${key}<br>%{x}<br>Strike %{y:,.3~f}<extra></extra>`
+      hovertemplate:
+        `<b>${key}</b>` +
+        "<br>Time: %{x}" +
+        "<br>Strike: %{y:,.3~f}" +
+        "<extra></extra>"
     }));
 
-    traces.push({
-      type: "scatter",
-      mode: "lines",
-      name: "Theo ES",
-      x: history.frames.map((frame) => frame.timestamp),
-      y: history.frames.map((frame) => frame.theo),
-      line: { color: "#f4b942", width: 2, dash: "dot" },
-      hovertemplate: "Theo ES<br>%{x}<br>%{y:,.3~f}<extra></extra>"
-    });
-
+    // Current-frame markers. Theo ES has intentionally been removed from
+    // this chart in v0.7.
     traces.push({
       type: "scatter",
       mode: "markers+text",
-      name: "Current",
+      name: "Current frame",
       x: [],
       y: [],
       text: [],
@@ -1402,10 +1444,15 @@
       textfont: { size: 9, color: "#eef4fb" },
       marker: {
         size: 8,
-        color: history.keys.map((key) =>
-          key.startsWith("Call") ? "#49a5ff" : "#ff6670"
-        )
+        color: history.keys.map((key, index) =>
+          timelapseRankColor(key, index)
+        ),
+        line: {
+          width: 1,
+          color: "#071018"
+        }
       },
+      hoverinfo: "skip",
       showlegend: false
     });
 
@@ -1415,14 +1462,14 @@
       {
         ...baseLayout,
         hovermode: "x unified",
-        margin: { l: 64, r: 72, t: 30, b: 55 },
+        margin: { l: 70, r: 72, t: 30, b: 55 },
         xaxis: {
           ...baseLayout.xaxis,
           title: { text: "Time" }
         },
         yaxis: {
           ...baseLayout.yaxis,
-          title: { text: "Strike level" },
+          title: { text: "Strike" },
           tickformat: ",.3~f",
           exponentformat: "none",
           showexponent: "none"
@@ -1436,44 +1483,211 @@
       },
       plotConfig
     );
-
-    $("timelineSlider").max = String(history.frames.length - 1);
-    $("timelineSlider").value = "0";
-    state.frame = 0;
-    updateFrame(0);
   }
 
-  function updateFrame(index) {
-    if (!state.history?.frames.length) return;
+  function rankedBarFrameData(frame, history) {
+    return history.keys
+      .map((key, index) => {
+        const point = frame.ranks[key];
 
-    const safeIndex = Math.max(
-      0,
-      Math.min(Number(index) || 0, state.history.frames.length - 1)
+        if (
+          !point ||
+          !Number.isFinite(Number(point.strike)) ||
+          !Number.isFinite(Number(point.value))
+        ) {
+          return null;
+        }
+
+        return {
+          key,
+          index,
+          strike: Number(point.strike),
+          value: Number(point.value),
+          side: key.startsWith("Call") ? "Call" : "Put",
+          color: timelapseRankColor(key, index)
+        };
+      })
+      .filter(Boolean);
+  }
+
+  function renderRankedBarFrame(frame, history) {
+    const points = rankedBarFrameData(frame, history);
+
+    if (!points.length) {
+      Plotly.purge("timelapseChart");
+      showError(
+        "timelapseError",
+        `No ranked ${state.greek} values are available for ${frame.timestamp}.`
+      );
+      return;
+    }
+
+    clearError("timelapseError");
+
+    // Unique internal Y categories let multiple ranked levels share the same
+    // strike without covering one another. Tick text remains strike-only.
+    const yCategories = points.map(
+      (point) => `${formatNumber(point.strike)}|${point.key}`
     );
 
-    state.frame = safeIndex;
-    const frame = state.history.frames[safeIndex];
+    const strikeLabels = points.map(
+      (point) => formatNumber(point.strike)
+    );
+
+    const customData = points.map((point) => [
+      point.key,
+      formatNumber(point.strike),
+      formatNumber(point.value)
+    ]);
+
+    Plotly.react(
+      "timelapseChart",
+      [{
+        type: "bar",
+        orientation: "h",
+        name: `${state.greek} ranked values`,
+        x: points.map((point) => point.value),
+        y: yCategories,
+        customdata: customData,
+        text: points.map((point) => point.key),
+        textposition: "auto",
+        insidetextanchor: "middle",
+        cliponaxis: false,
+        marker: {
+          color: points.map((point) => point.color),
+          line: {
+            color: "rgba(255,255,255,.12)",
+            width: 1
+          }
+        },
+        hovertemplate:
+          "<b>%{customdata[0]}</b>" +
+          "<br>Strike: %{customdata[1]}" +
+          `<br>${state.greek} Value: %{customdata[2]}` +
+          "<extra></extra>"
+      }],
+      {
+        ...baseLayout,
+        barmode: "relative",
+        bargap: 0.22,
+        margin: { l: 86, r: 32, t: 30, b: 58 },
+        xaxis: {
+          ...baseLayout.xaxis,
+          title: {
+            text: `${state.greek} Value`,
+            font: { size: 10 }
+          },
+          tickformat: ",.3~f",
+          exponentformat: "none",
+          showexponent: "none",
+          zeroline: true,
+          zerolinecolor: "rgba(255,255,255,.32)",
+          zerolinewidth: 1
+        },
+        yaxis: {
+          ...baseLayout.yaxis,
+          title: {
+            text: "Strike",
+            font: { size: 11 }
+          },
+          type: "category",
+          categoryorder: "array",
+          categoryarray: yCategories,
+          tickmode: "array",
+          tickvals: yCategories,
+          ticktext: strikeLabels,
+          autorange: "reversed",
+          automargin: true
+        },
+        showlegend: false,
+        annotations: [{
+          xref: "paper",
+          yref: "paper",
+          x: 1,
+          y: 1.055,
+          xanchor: "right",
+          yanchor: "bottom",
+          showarrow: false,
+          text: frame.timestamp,
+          font: {
+            size: 10,
+            color: "#8ea0b6"
+          }
+        }]
+      },
+      plotConfig
+    );
+  }
+
+  function renderHistory(history, requestedFrame = 0) {
+    if (!history.frames.length) {
+      throw new Error("No matching ranked rows found.");
+    }
+
+    setElementGraphHeight("timelapseChart", 560);
+    updateTimelapseModeButtons();
+
+    const safeFrame = Math.max(
+      0,
+      Math.min(
+        Number(requestedFrame) || 0,
+        history.frames.length - 1
+      )
+    );
+
+    if (state.timelapseMode === "bars") {
+      renderRankedBarFrame(history.frames[safeFrame], history);
+    } else {
+      renderRankedLevelHistory(history);
+    }
+
+    $("timelineSlider").max = String(history.frames.length - 1);
+    $("timelineSlider").value = String(safeFrame);
+    state.frame = safeFrame;
+    updateFrame(safeFrame);
+  }
+
+  function renderCurrentLevelGrid(frame) {
+    $("levelGrid").innerHTML = state.history.keys.map((key) => {
+      const point = frame.ranks[key];
+
+      return `
+        <div class="level-chip ${key.startsWith("Call") ? "call" : "put"}">
+          <div class="rank">${key}</div>
+          <div class="strike">
+            ${point ? formatNumber(point.strike) : "—"}
+          </div>
+          <div class="level-value">
+            ${point ? formatNumber(point.value) : "—"}
+          </div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  function updateRankedLevelCurrentFrame(frame) {
     const markerX = [];
     const markerY = [];
     const markerText = [];
 
-    $("timelineSlider").value = String(safeIndex);
-    $("timelineLabel").textContent = frame.timestamp;
-    $("frameTheo").textContent = Number.isFinite(frame.theo)
-      ? `Theo ES ${formatNumber(frame.theo)}`
-      : "Theo ES —";
-
     for (const key of state.history.keys) {
       if (!frame.ranks[key]) continue;
+
       markerX.push(frame.timestamp);
       markerY.push(frame.ranks[key].strike);
       markerText.push(key.replace(` ${state.greek} `, " "));
     }
 
+    // There are exactly 10 ranked line traces, followed by the current-frame
+    // marker trace. Theo ES no longer occupies a trace index.
     Plotly.restyle(
       "timelapseChart",
-      { x: [markerX], y: [markerY], text: [markerText] },
-      [state.history.keys.length + 1]
+      {
+        x: [markerX],
+        y: [markerY],
+        text: [markerText]
+      },
+      [state.history.keys.length]
     );
 
     Plotly.relayout("timelapseChart", {
@@ -1491,13 +1705,36 @@
         }
       }]
     });
+  }
 
-    $("levelGrid").innerHTML = state.history.keys.map((key) => `
-      <div class="level-chip ${key.startsWith("Call") ? "call" : "put"}">
-        <div class="rank">${key}</div>
-        <div class="strike">${frame.ranks[key] ? formatNumber(frame.ranks[key].strike) : "—"}</div>
-      </div>
-    `).join("");
+  function updateFrame(index) {
+    if (!state.history?.frames.length) return;
+
+    const safeIndex = Math.max(
+      0,
+      Math.min(
+        Number(index) || 0,
+        state.history.frames.length - 1
+      )
+    );
+
+    state.frame = safeIndex;
+    const frame = state.history.frames[safeIndex];
+
+    $("timelineSlider").value = String(safeIndex);
+    $("timelineLabel").textContent = frame.timestamp;
+
+    $("frameTheo").textContent = Number.isFinite(frame.theo)
+      ? `Theo ES ${formatNumber(frame.theo)}`
+      : "Theo ES —";
+
+    if (state.timelapseMode === "bars") {
+      renderRankedBarFrame(frame, state.history);
+    } else {
+      updateRankedLevelCurrentFrame(frame);
+    }
+
+    renderCurrentLevelGrid(frame);
   }
 
   async function loadHistory() {
@@ -1725,6 +1962,13 @@
       updateMultiMetricUI();
       renderVoltra();
     });
+    document.querySelectorAll(".timelapse-mode-button").forEach((button) => {
+      button.addEventListener("click", () => {
+        stopPlayback();
+        setTimelapseMode(button.dataset.mode);
+      });
+    });
+
     $("historyDate").addEventListener("change", loadHistory);
 
     $("timelineSlider").addEventListener("input", (event) => {
