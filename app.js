@@ -123,24 +123,31 @@
 
   function buildGaugeCards() {
     const metrics = [
-      { key: "Ratio", label: "Ratio" },
-      { key: "Total", label: "Total" },
-      { key: "Call", label: "Calls" },
-      { key: "Put", label: "Puts" }
+      { key: "Ratio", label: "RATIO" },
+      { key: "Total", label: "TOTAL" },
+      { key: "Call", label: "CALLS" },
+      { key: "Put", label: "PUTS" }
     ];
 
     $("gaugeGrid").innerHTML = metrics.map((metric) => `
-      <div class="gauge-card" data-metric="${metric.key}">
+      <article class="gauge-card" data-metric="${metric.key}">
         <div class="gauge-card-header">
-          <div>
-            <div class="gauge-label">${metric.label}</div>
-            <div class="gauge-greek" id="gauge-greek-${metric.key}">${state.greek}</div>
+          <div class="gauge-heading-group">
+            <div class="gauge-metric-title">${metric.label}</div>
+            <div class="gauge-context" id="gauge-greek-${metric.key}">
+              ${state.greek} · ${C.buckets[state.bucket].label}
+            </div>
           </div>
-          <div class="gauge-sign" id="gauge-sign-${metric.key}">—</div>
+          <div class="gauge-sign" id="gauge-sign-${metric.key}">NO DATA</div>
         </div>
-        <div class="gauge-value" id="gauge-value-${metric.key}">—</div>
-        <div id="gauge-${metric.key}" class="gauge-chart"></div>
-      </div>
+
+        <div class="gauge-value-row">
+          <div class="gauge-value" id="gauge-value-${metric.key}">—</div>
+          <div class="gauge-value-label">${metric.label}</div>
+        </div>
+
+        <div id="gauge-${metric.key}" class="gauge-chart" aria-label="${metric.label} gauge"></div>
+      </article>
     `).join("");
   }
 
@@ -275,42 +282,102 @@
   }
 
   function renderVoltra() {
-    const rows = state.voltra.filter((row) => Number.isFinite(Number(row.strikePrice)));
-    if (!rows.length) return;
+    const sourceRows = state.voltra.filter((row) =>
+      row.timestamp &&
+      Number.isFinite(Number(row.strikePrice))
+    );
+
+    if (!sourceRows.length) {
+      Plotly.purge("voltraChart");
+      showError("voltraError", "The selected Voltra file does not contain usable strike data.");
+      return;
+    }
+
+    clearError("voltraError");
 
     const spec = metricSpec();
     $("voltraTitle").textContent = spec.title;
 
-    const theoRow = rows.find((row) => Number.isFinite(Number(row["Theo ES"])));
+    // Snapshot means the newest timestamp only. This also prevents an older
+    // timestamp in the same CSV from creating duplicate strike bars.
+    const latestTimestamp = sourceRows
+      .map((row) => String(row.timestamp))
+      .sort()
+      .at(-1);
+
+    const latestRows = sourceRows.filter(
+      (row) => String(row.timestamp) === latestTimestamp
+    );
+
+    const theoRow = latestRows.find((row) =>
+      Number.isFinite(Number(row["Theo ES"]))
+    );
     const theoES = Number(theoRow?.["Theo ES"]);
 
-    // Keep the first view readable around spot, while still using only the selected
-    // bucket's *_tota.csv file as the source.
-    const visibleRows = Number.isFinite(theoES)
-      ? rows.filter((row) => Math.abs(Number(row.strikePrice) - theoES) <= 500)
-      : rows;
+    // Only keep strikes that have actual data for the metric the user selected.
+    // Zero/blank call + put rows are intentionally omitted from the Y-axis.
+    const hasSelectedMetricData = (row) => {
+      if (spec.single) {
+        const value = Number(row[spec.single]);
+        return Number.isFinite(value) && value !== 0;
+      }
 
-    visibleRows.sort((a, b) => Number(a.strikePrice) - Number(b.strikePrice));
+      const callValue = Number(row[spec.call]);
+      const putValue = Number(row[spec.put]);
 
-    const strikes = visibleRows.map((row) => formatNumber(row.strikePrice));
+      return (
+        (Number.isFinite(callValue) && callValue !== 0) ||
+        (Number.isFinite(putValue) && putValue !== 0)
+      );
+    };
+
+    const activeRows = latestRows
+      .filter(hasSelectedMetricData)
+      .sort((a, b) => Number(a.strikePrice) - Number(b.strikePrice));
+
+    if (!activeRows.length) {
+      Plotly.purge("voltraChart");
+      showError(
+        "voltraError",
+        `No non-zero ${spec.title.toLowerCase()} data is available for ${C.buckets[state.bucket].label} at ${latestTimestamp}.`
+      );
+      return;
+    }
+
+    const strikes = activeRows.map((row) => Number(row.strikePrice));
+
+    // Use the actual strike spacing for bar thickness while keeping bars readable.
+    const strikeDiffs = strikes
+      .slice(1)
+      .map((strike, index) => strike - strikes[index])
+      .filter((diff) => Number.isFinite(diff) && diff > 0)
+      .sort((a, b) => a - b);
+
+    const medianStep = strikeDiffs.length
+      ? strikeDiffs[Math.floor(strikeDiffs.length / 2)]
+      : 25;
+
+    const barWidth = Math.max(1, Math.min(25, medianStep * 0.72));
     const traces = [];
 
     if (spec.single) {
-      const rawValues = visibleRows.map((row) => Number(row[spec.single]) || 0);
+      const values = activeRows.map((row) => Number(row[spec.single]) || 0);
 
       traces.push({
         type: "bar",
         orientation: "h",
         name: spec.singleLabel,
         y: strikes,
-        x: rawValues,
-        customdata: rawValues.map(formatNumber),
+        x: values,
+        width: barWidth,
+        customdata: values.map(formatNumber),
         marker: { color: "#5ba7ff" },
-        hovertemplate: `Strike %{y}<br>${spec.singleLabel}: %{customdata}<extra></extra>`
+        hovertemplate:
+          `Strike %{y}<br>${spec.singleLabel}: %{customdata}<extra></extra>`
       });
     } else {
-      const callValues = visibleRows.map((row) => Number(row[spec.call]) || 0);
-      const putValues = visibleRows.map((row) => Number(row[spec.put]) || 0);
+      const callValues = activeRows.map((row) => Number(row[spec.call]) || 0);
+      const putValues = activeRows.map((row) => Number(row[spec.put]) || 0);
 
       traces.push({
         type: "bar",
@@ -318,9 +385,11 @@
         name: spec.callLabel,
         y: strikes,
         x: callValues,
+        width: barWidth,
         customdata: callValues.map(formatNumber),
         marker: { color: "#49a5ff" },
-        hovertemplate: `Strike %{y}<br>${spec.callLabel}: %{customdata}<extra></extra>`
+        hovertemplate:
+          `Strike %{y}<br>${spec.callLabel}: %{customdata}<extra></extra>`
       });
 
       traces.push({
@@ -329,11 +398,29 @@
         name: spec.putLabel,
         y: strikes,
         x: putValues.map((value) => -Math.abs(value)),
-        customdata: putValues.map(formatNumber),
+        width: barWidth,
+        customdata: putValues.map((value) => formatNumber(Math.abs(value))),
         marker: { color: "#ff6670" },
-        hovertemplate: `Strike %{y}<br>${spec.putLabel}: %{customdata}<extra></extra>`
+        hovertemplate:
+          `Strike %{y}<br>${spec.putLabel}: %{customdata}<extra></extra>`
       });
     }
+
+    const rangeValues = [...strikes];
+    if (Number.isFinite(theoES)) rangeValues.push(theoES);
+
+    const minY = Math.min(...rangeValues);
+    const maxY = Math.max(...rangeValues);
+    const span = Math.max(maxY - minY, medianStep);
+    const yPadding = Math.max(medianStep * 0.7, span * 0.045);
+    const yRange = [minY - yPadding, maxY + yPadding];
+
+    // Give each data-bearing strike enough vertical room to remain readable.
+    const chartHeight = Math.max(
+      480,
+      Math.min(1100, activeRows.length * 27 + 150)
+    );
+    $("voltraChart").style.height = `${chartHeight}px`;
 
     Plotly.react(
       "voltraChart",
@@ -341,32 +428,79 @@
       {
         ...baseLayout,
         barmode: "relative",
-        margin: { l: 76, r: 20, t: 24, b: 50 },
+        bargap: 0.18,
+        margin: { l: 92, r: 92, t: 24, b: 56 },
+
         xaxis: {
           ...baseLayout.xaxis,
           title: {
-            text: spec.single ? spec.singleLabel : "Calls (+) / Puts (mirrored)",
+            text: spec.single
+              ? spec.singleLabel
+              : "Calls (+) / Puts (mirrored)",
             font: { size: 10 }
           },
-          // No K/M/B abbreviations. Show comma-separated values and only round
-          // beyond thousandths.
           tickformat: ",.3~f",
           exponentformat: "none",
-          showexponent: "none"
+          showexponent: "none",
+          automargin: true
         },
+
+        // Real numeric strike axis. Tick labels are restricted to strikes that
+        // actually contain non-zero data for the selected metric.
         yaxis: {
           ...baseLayout.yaxis,
-          title: { text: "Strike price", font: { size: 10 } },
-          type: "category",
-          categoryorder: "array",
-          categoryarray: strikes,
-          tickfont: { size: 8 }
+          title: {
+            text: "Strike",
+            standoff: 8,
+            font: { size: 11 }
+          },
+          type: "linear",
+          range: yRange,
+          tickmode: "array",
+          tickvals: strikes,
+          ticktext: strikes.map(formatNumber),
+          tickfont: { size: 9 },
+          ticks: "outside",
+          ticklen: 4,
+          automargin: true
+        },
+
+        // Theo ES gets its own clean right-side axis. There is intentionally no
+        // full-width yellow reference line in v0.3.
+        yaxis2: {
+          title: {
+            text: "Theo ES",
+            standoff: 8,
+            font: { size: 11, color: "#f4b942" }
+          },
+          overlaying: "y",
+          side: "right",
+          type: "linear",
+          range: yRange,
+          tickmode: "array",
+          tickvals: Number.isFinite(theoES) ? [theoES] : [],
+          ticktext: Number.isFinite(theoES) ? [formatNumber(theoES)] : [],
+          tickfont: { size: 10, color: "#f4b942" },
+          tickcolor: "#f4b942",
+          ticks: "outside",
+          ticklen: 6,
+          showgrid: false,
+          zeroline: false,
+          automargin: true
+        },
+
+        legend: {
+          orientation: "h",
+          x: 0,
+          y: 1.035,
+          xanchor: "left",
+          yanchor: "bottom",
+          font: { size: 10 }
         }
       },
       plotConfig
     );
   }
-
   async function loadVoltra() {
     clearError("voltraError");
 
