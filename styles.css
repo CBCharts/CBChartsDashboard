@@ -224,6 +224,11 @@ input[type="date"] {
   font-weight: 700;
 }
 
+.graph-size-control select {
+  min-width: 108px;
+}
+
+
 /* -------------------------------------------------------------------------- */
 /* v0.2 LIVE OVERVIEW                                                         */
 /* Greek is selected in the dropdown. Cards are ordered Ratio/Total/Calls/Puts */
@@ -461,8 +466,8 @@ input[type="date"] {
   gap: 14px;
 }
 
-.tall-chart { height: 650px; }
-.flow-chart { height: 560px; }
+.tall-chart { height: 650px; min-height: 360px; }
+.flow-chart { height: 560px; min-height: 340px; }
 
 .visual-panel {
   min-height: 710px;
@@ -480,6 +485,7 @@ input[type="date"] {
   width: 100%;
   flex: 1;
   min-height: 650px;
+  height: 650px;
   border: 0;
   background: #0a0f16;
 }
@@ -624,6 +630,15 @@ input[type="date"] {
   .overview-toolbar,
   .section-heading { align-items: stretch; flex-direction: column; }
   .toolbar-controls { flex-wrap: wrap; }
+
+  .graph-size-control {
+    flex: 1 1 108px;
+  }
+
+  .graph-size-control select {
+    width: 100%;
+    min-width: 0;
+  }
   .market-overview { position: relative; }
 }
 

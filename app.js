@@ -15,7 +15,8 @@
     playTimer: null,
     frame: 0,
     lastSingleMetric: "volume",
-    multiMetrics: ["volume"]
+    multiMetrics: ["volume"],
+    graphSize: "standard"
   };
 
   const plotConfig = {
@@ -23,6 +24,183 @@
     displaylogo: false,
     modeBarButtonsToRemove: ["lasso2d", "select2d"]
   };
+
+  const GRAPH_SIZES = {
+    compact: 0.72,
+    standard: 1,
+    large: 1.35
+  };
+
+  function graphScale() {
+    return GRAPH_SIZES[state.graphSize] || GRAPH_SIZES.standard;
+  }
+
+  function setElementGraphHeight(id, baseHeight) {
+    const element = $(id);
+    if (!element) return;
+
+    element.dataset.baseHeight = String(baseHeight);
+    element.style.height = `${Math.round(baseHeight * graphScale())}px`;
+  }
+
+  function resizePlotlyElement(id) {
+    const element = $(id);
+    if (!element || !element.data) return;
+
+    requestAnimationFrame(() => {
+      try {
+        Plotly.Plots.resize(element);
+      } catch (_) {
+        // Ignore resize calls before a plot has fully initialized.
+      }
+    });
+  }
+
+  function resizeEmbeddedVisual() {
+    const frame = $("visualFrame");
+    if (!frame) return;
+
+    const baseHeight = 650;
+    const height = Math.round(baseHeight * graphScale());
+    frame.style.minHeight = `${height}px`;
+    frame.style.height = `${height}px`;
+
+    const panel = frame.closest(".visual-panel");
+    if (panel) {
+      panel.style.minHeight = `${height + 60}px`;
+    }
+
+    const loading = $("visualLoading");
+    if (loading) loading.style.minHeight = `${height}px`;
+
+    try {
+      const frameWindow = frame.contentWindow;
+      const frameDocument = frame.contentDocument;
+      if (!frameWindow || !frameDocument) return;
+
+      frameWindow.dispatchEvent(new Event("resize"));
+
+      const plots = frameDocument.querySelectorAll(".plotly-graph-div");
+      plots.forEach((plot) => {
+        if (frameWindow.Plotly?.Plots?.resize) {
+          frameWindow.Plotly.Plots.resize(plot);
+        }
+      });
+    } catch (_) {
+      // srcdoc is normally same-origin; if a browser blocks access,
+      // the iframe container itself still resizes.
+    }
+  }
+
+  function applyGraphSize(value, persist = true) {
+    state.graphSize = Object.hasOwn(GRAPH_SIZES, value)
+      ? value
+      : "standard";
+
+    const select = $("graphSizeSelect");
+    if (select) select.value = state.graphSize;
+
+    if (persist) {
+      try {
+        localStorage.setItem("cbcharts-graph-size", state.graphSize);
+      } catch (_) {}
+    }
+
+    // Voltra uses a row-dependent base height stored during render.
+    const voltra = $("voltraChart");
+    if (voltra) {
+      const base = Number(voltra.dataset.baseHeight) || 650;
+      voltra.style.height = `${Math.round(base * graphScale())}px`;
+    }
+
+    setElementGraphHeight("timelapseChart", 560);
+    resizeEmbeddedVisual();
+
+    resizePlotlyElement("voltraChart");
+    resizePlotlyElement("timelapseChart");
+
+    ["Ratio", "Total", "Call", "Put"].forEach((metric) => {
+      resizePlotlyElement(`gauge-${metric}`);
+    });
+  }
+
+  function loadStoredGraphSize() {
+    try {
+      const stored = localStorage.getItem("cbcharts-graph-size");
+      if (stored && Object.hasOwn(GRAPH_SIZES, stored)) {
+        state.graphSize = stored;
+      }
+    } catch (_) {}
+  }
+
+  function makeEmbeddedPlotlyResponsive(html) {
+    const responsiveCss = `
+      <style id="cbcharts-responsive-plotly">
+        html, body {
+          width: 100% !important;
+          height: 100% !important;
+          min-height: 100% !important;
+          margin: 0 !important;
+          overflow: hidden !important;
+          background: #0a0f16 !important;
+        }
+
+        .plotly-graph-div,
+        .js-plotly-plot,
+        .plot-container,
+        .svg-container {
+          width: 100% !important;
+          max-width: 100% !important;
+        }
+
+        .plotly-graph-div,
+        .js-plotly-plot {
+          height: 100% !important;
+          min-height: 100% !important;
+        }
+      </style>
+    `;
+
+    const responsiveScript = `
+      <script id="cbcharts-responsive-plotly-script">
+        (() => {
+          const resizePlots = () => {
+            try {
+              document.querySelectorAll(".plotly-graph-div").forEach((plot) => {
+                if (window.Plotly?.Plots?.resize) {
+                  window.Plotly.Plots.resize(plot);
+                }
+              });
+            } catch (_) {}
+          };
+
+          window.addEventListener("load", () => setTimeout(resizePlots, 30));
+          window.addEventListener("resize", resizePlots);
+
+          if ("ResizeObserver" in window) {
+            const observer = new ResizeObserver(() => resizePlots());
+            observer.observe(document.documentElement);
+          }
+        })();
+      </script>
+    `;
+
+    let output = html;
+
+    if (/<\/head>/i.test(output)) {
+      output = output.replace(/<\/head>/i, `${responsiveCss}</head>`);
+    } else {
+      output = `${responsiveCss}${output}`;
+    }
+
+    if (/<\/body>/i.test(output)) {
+      output = output.replace(/<\/body>/i, `${responsiveScript}</body>`);
+    } else {
+      output += responsiveScript;
+    }
+
+    return output;
+  }
 
   const baseLayout = {
     paper_bgcolor: "rgba(0,0,0,0)",
@@ -508,7 +686,6 @@
       (row) => String(row.timestamp) === latestTimestamp
     );
 
-    // A strike remains on the graph if ANY selected metric has non-zero data.
     const metricHasData = (row, spec) => {
       if (spec.single) {
         const value = Number(row[spec.single]);
@@ -524,6 +701,7 @@
       );
     };
 
+    // A strike appears only when at least one selected metric has data.
     const activeRows = latestRows
       .filter((row) => specs.some((spec) => metricHasData(row, spec)))
       .sort((a, b) => Number(a.strikePrice) - Number(b.strikePrice));
@@ -538,10 +716,38 @@
     }
 
     const strikes = activeRows.map((row) => Number(row.strikePrice));
-    const theoValues = activeRows.map((row) => {
-      const value = Number(row["Theo ES"]);
-      return Number.isFinite(value) ? value : null;
+    const theoValues = activeRows
+      .map((row) => Number(row["Theo ES"]))
+      .filter(Number.isFinite);
+
+    // Every visible bar gets the same complete row-level hover payload.
+    const hoverData = activeRows.map((row) => {
+      const adjustedCall = Number(row.adj_call_vol);
+      const adjustedPut = Number(row.adj_put_vol);
+      const adjustedVolume =
+        (Number.isFinite(adjustedCall) ? adjustedCall : 0) +
+        (Number.isFinite(adjustedPut) ? adjustedPut : 0);
+
+      return [
+        formatNumber(row.strikePrice),
+        formatNumber(row["Theo ES"]),
+        formatNumber(row.call_vol_sum),
+        formatNumber(row.put_vol_sum),
+        formatNumber(adjustedVolume),
+        formatNumber(row.total_vol_sum),
+        formatNumber(row.adj_sum)
+      ];
     });
+
+    const fullHoverTemplate =
+      "<b>Strike:</b> %{customdata[0]}" +
+      "<br><b>Theo ES:</b> %{customdata[1]}" +
+      "<br><b>Call Volume:</b> %{customdata[2]}" +
+      "<br><b>Put Volume:</b> %{customdata[3]}" +
+      "<br><b>Adjusted Volume:</b> %{customdata[4]}" +
+      "<br><b>Total Volume:</b> %{customdata[5]}" +
+      "<br><b>Adjusted Sum:</b> %{customdata[6]}" +
+      "<extra></extra>";
 
     const strikeDiffs = strikes
       .slice(1)
@@ -558,7 +764,11 @@
 
     specs.forEach((spec, metricIndex) => {
       const colors = VOLTRA_COLOR_PAIRS[metricIndex];
-      const widthFactor = metricCount === 1 ? 0.72 : metricCount === 2 ? 0.34 : 0.22;
+      const widthFactor =
+        metricCount === 1 ? 0.72 :
+        metricCount === 2 ? 0.34 :
+        0.22;
+
       const barWidth = Math.max(
         0.5,
         Math.min(25, medianStrikeStep * widthFactor)
@@ -576,10 +786,9 @@
           y: strikes,
           x: values,
           width: barWidth,
-          customdata: values.map(formatNumber),
+          customdata: hoverData,
           marker: { color: colors.call },
-          hovertemplate:
-            `Strike %{y}<br>${spec.singleLabel}: %{customdata}<extra></extra>`
+          hovertemplate: fullHoverTemplate
         });
 
         return;
@@ -601,10 +810,9 @@
         y: strikes,
         x: callValues,
         width: barWidth,
-        customdata: callValues.map(formatNumber),
+        customdata: hoverData,
         marker: { color: colors.call },
-        hovertemplate:
-          `Strike %{y}<br>${spec.callLabel}: %{customdata}<extra></extra>`
+        hovertemplate: fullHoverTemplate
       });
 
       traces.push({
@@ -616,53 +824,34 @@
         y: strikes,
         x: putValues.map((value) => -Math.abs(value)),
         width: barWidth,
-        customdata: putValues.map((value) =>
-          formatNumber(Math.abs(value))
-        ),
+        customdata: hoverData,
         marker: { color: colors.put },
-        hovertemplate:
-          `Strike %{y}<br>${spec.putLabel}: %{customdata}<extra></extra>`
+        hovertemplate: fullHoverTemplate
       });
     });
 
-    // Explicit Theo ES trace attached to y2 guarantees the right axis renders.
-    // Markers are tiny and sit on x=0 so there is no full-width reference line.
-    const validTheoPairs = activeRows
-      .map((row) => ({
-        strike: Number(row.strikePrice),
-        theo: Number(row["Theo ES"])
-      }))
-      .filter((pair) => Number.isFinite(pair.theo));
-
-    if (validTheoPairs.length) {
+    // Invisible secondary-axis trace:
+    // keeps the Theo ES Y-axis active without drawing yellow dots/lines.
+    if (theoValues.length) {
       traces.push({
         type: "scatter",
         mode: "markers",
-        name: "Theo ES",
-        legendgroup: "theo-es",
-        x: validTheoPairs.map(() => 0),
-        y: validTheoPairs.map((pair) => pair.theo),
+        name: "Theo ES axis",
+        x: theoValues.map(() => 0),
+        y: theoValues,
         yaxis: "y2",
-        customdata: validTheoPairs.map((pair) => [
-          formatNumber(pair.strike),
-          formatNumber(pair.theo)
-        ]),
+        showlegend: false,
+        hoverinfo: "skip",
         marker: {
-          color: "#f4b942",
-          size: 5,
-          symbol: "diamond"
-        },
-        hovertemplate:
-          "Strike %{customdata[0]}<br>Theo ES %{customdata[1]}<extra></extra>"
+          size: 1,
+          opacity: 0
+        }
       });
     }
 
     const minStrike = Math.min(...strikes);
     const maxStrike = Math.max(...strikes);
-    const strikeSpan = Math.max(
-      maxStrike - minStrike,
-      medianStrikeStep
-    );
+    const strikeSpan = Math.max(maxStrike - minStrike, medianStrikeStep);
     const strikePadding = Math.max(
       medianStrikeStep * 0.7,
       strikeSpan * 0.045
@@ -672,29 +861,14 @@
       maxStrike + strikePadding
     ];
 
-    const validTheo = theoValues.filter(Number.isFinite);
     let theoRange = strikeRange;
 
-    if (validTheo.length) {
-      const minTheo = Math.min(...validTheo);
-      const maxTheo = Math.max(...validTheo);
-
-      const theoDiffs = validTheo
-        .slice(1)
-        .map((value, index) => value - validTheo[index])
-        .filter((diff) => Number.isFinite(diff) && diff > 0)
-        .sort((a, b) => a - b);
-
-      const medianTheoStep = theoDiffs.length
-        ? theoDiffs[Math.floor(theoDiffs.length / 2)]
-        : medianStrikeStep;
-
-      const theoSpan = Math.max(
-        maxTheo - minTheo,
-        medianTheoStep
-      );
+    if (theoValues.length) {
+      const minTheo = Math.min(...theoValues);
+      const maxTheo = Math.max(...theoValues);
+      const theoSpan = Math.max(maxTheo - minTheo, medianStrikeStep);
       const theoPadding = Math.max(
-        medianTheoStep * 0.7,
+        medianStrikeStep * 0.7,
         theoSpan * 0.045
       );
 
@@ -704,24 +878,23 @@
       ];
     }
 
-    const chartHeight = Math.max(
+    const baseChartHeight = Math.max(
       480,
       Math.min(1100, activeRows.length * 27 + 165)
     );
-    $("voltraChart").style.height = `${chartHeight}px`;
+
+    setElementGraphHeight("voltraChart", baseChartHeight);
 
     Plotly.react(
       "voltraChart",
       traces,
       {
         ...baseLayout,
-
-        // Multiple selected metrics share the same strike chart.
-        // Plotly groups the traces so up to 3 metrics remain distinguishable.
         barmode: metricCount > 1 ? "group" : "relative",
         bargap: metricCount > 1 ? 0.20 : 0.18,
         bargroupgap: metricCount > 1 ? 0.08 : 0,
-        margin: { l: 92, r: 105, t: 34, b: 56 },
+        hovermode: "closest",
+        margin: { l: 92, r: 95, t: 34, b: 56 },
 
         xaxis: {
           ...baseLayout.xaxis,
@@ -737,7 +910,7 @@
           automargin: true
         },
 
-        // LEFT: strike.
+        // LEFT: data-bearing strike prices only.
         yaxis: {
           ...baseLayout.yaxis,
           title: {
@@ -756,7 +929,8 @@
           automargin: true
         },
 
-        // RIGHT: Theo ES values matched row-for-row to the plotted strikes.
+        // RIGHT: Theo ES remains a true secondary Y-axis, but uses clean
+        // auto-ticks rather than one label for every row.
         yaxis2: {
           title: {
             text: "Theo ES",
@@ -767,9 +941,10 @@
           side: "right",
           type: "linear",
           range: theoRange,
-          tickmode: "array",
-          tickvals: validTheo,
-          ticktext: validTheo.map(formatNumber),
+          nticks: 8,
+          tickformat: ",.3~f",
+          exponentformat: "none",
+          showexponent: "none",
           tickfont: { size: 9, color: "#f4b942" },
           tickcolor: "#f4b942",
           ticks: "outside",
@@ -799,8 +974,15 @@
       const text = await fetchText(raw("Voltra", bucket.voltra));
       state.voltra = parseCSV(text);
 
-      const timestamp = state.voltra.find((row) => row.timestamp)?.timestamp;
-      $("voltraTimestamp").textContent = timestamp ? `As of ${timestamp}` : "Latest";
+      const timestamp = state.voltra
+        .map((row) => row.timestamp)
+        .filter(Boolean)
+        .map(String)
+        .sort()
+        .at(-1);
+
+      $("voltraTimestamp").textContent =
+        timestamp ? `As of ${timestamp}` : "Latest";
 
       renderVoltra();
     } catch (error) {
@@ -819,17 +1001,35 @@
     const file = `${bucket.visualPrefix}_brent_bs_${state.greek}.html`;
 
     $("visualTitle").textContent = `${bucket.label} ${state.greek}`;
-    $("visualSourceLink").href = `https://github.com/CBCharts/BrentBSVisuals/blob/main/${file}`;
+    $("visualSourceLink").href =
+      `https://github.com/CBCharts/BrentBSVisuals/blob/main/${file}`;
+
     $("visualLoading").classList.remove("hidden");
     $("visualFrame").classList.add("hidden");
 
+    resizeEmbeddedVisual();
+
     try {
-      $("visualFrame").srcdoc = await fetchText(raw("BrentBSVisuals", file));
-      $("visualLoading").classList.add("hidden");
-      $("visualFrame").classList.remove("hidden");
+      const rawHtml = await fetchText(raw("BrentBSVisuals", file));
+      const responsiveHtml = makeEmbeddedPlotlyResponsive(rawHtml);
+
+      $("visualFrame").onload = () => {
+        $("visualLoading").classList.add("hidden");
+        $("visualFrame").classList.remove("hidden");
+
+        // Give Plotly a moment to complete its own initialization, then
+        // resize the plot to the user-selected graph size.
+        setTimeout(resizeEmbeddedVisual, 50);
+        setTimeout(resizeEmbeddedVisual, 250);
+      };
+
+      $("visualFrame").srcdoc = responsiveHtml;
     } catch (error) {
       $("visualLoading").classList.add("hidden");
-      showError("visualError", `Could not load BrentBSVisuals: ${error.message}`);
+      showError(
+        "visualError",
+        `Could not load BrentBSVisuals: ${error.message}`
+      );
     }
   }
 
@@ -887,6 +1087,8 @@
 
   function renderHistory(history) {
     if (!history.frames.length) throw new Error("No matching ranked rows found.");
+
+    setElementGraphHeight("timelapseChart", 560);
 
     const callColors = ["#4ca7ff", "#67b6ff", "#82c4ff", "#9bd1ff", "#b4ddff"];
     const putColors = ["#ff626d", "#ff7a83", "#ff929b", "#ffabb1", "#ffc1c6"];
@@ -1210,6 +1412,10 @@
       if (state.view === "timelapse") await loadHistory();
     });
 
+    $("graphSizeSelect").addEventListener("change", (event) => {
+      applyGraphSize(event.target.value);
+    });
+
     $("snapshotMetric").addEventListener("change", (event) => {
       const value = event.target.value;
 
@@ -1258,11 +1464,13 @@
   }
 
   async function init() {
+    loadStoredGraphSize();
     initControls();
     buildGaugeCards();
     initializeMultiMetricOptions();
     renderRepos();
     wireEvents();
+    applyGraphSize(state.graphSize, false);
     setConnection(null, "Connecting");
 
     await refreshLive();

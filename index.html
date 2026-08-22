@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#080d14">
   <title>CBCharts Market Dashboard</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=0.4.0">
+  <link rel="stylesheet" href="styles.css?v=0.5.0">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 </head>
@@ -31,6 +31,14 @@
         <div class="toolbar-controls">
           <label><span>Expiration bucket</span><select id="bucketSelect"></select></label>
           <label><span>Focus Greek</span><select id="greekSelect"><option>GEX</option><option>CEX</option><option>DEX</option><option>VEX</option></select></label>
+          <label class="graph-size-control">
+            <span>Graph size</span>
+            <select id="graphSizeSelect">
+              <option value="compact">Compact</option>
+              <option value="standard" selected>Standard</option>
+              <option value="large">Large</option>
+            </select>
+          </label>
           <button id="refreshButton" class="ghost-button">Refresh</button>
         </div>
       </div>
@@ -108,5 +116,5 @@
     </div>
   </main>
 </div>
-<script src="config.js?v=0.4.0"></script><script src="app.js?v=0.4.0"></script>
+<script src="config.js?v=0.5.0"></script><script src="app.js?v=0.5.0"></script>
 </body></html>
