@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#080d14">
   <title>CBCharts Market Dashboard</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=1.1.0">
+  <link rel="stylesheet" href="styles.css?v=1.2.0">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 </head>
@@ -18,7 +18,7 @@
       <button class="nav-item active" data-view="snapshot"><span>◫</span><b>Snapshot</b></button>
       <button class="nav-item" data-view="timelapse"><span>▶</span><b>Timelapse</b></button>
       <button class="nav-item" data-view="repos"><span>⌘</span><b>Repo's</b></button>
-      <button class="nav-item" data-view="thinkscript"><span>ƒ</span><b>ThinkScript Generator</b></button>
+      <button class="nav-item" data-view="pinescript"><span>ƒ</span><b>Pine Script Generator</b></button>
       <button class="nav-item" data-view="howto"><span>?</span><b>How-To</b></button>
     </nav>
     <div class="sidebar-footer"><div class="status-row"><i id="connectionDot"></i><span id="connectionText">Connecting</span></div><small id="lastRefresh">Waiting for data…</small></div>
@@ -171,43 +171,43 @@
 
       <section id="view-repos" class="view"><header class="section-heading"><div><div class="eyebrow">Data infrastructure</div><h2>Source repositories</h2><p>The dashboard reads the public raw files directly. No separate database or backend is required.</p></div></header><div id="repoGrid" class="repo-grid"></div></section>
 
-      <section id="view-thinkscript" class="view">
+      <section id="view-pinescript" class="view">
         <header class="section-heading">
           <div>
             <div class="eyebrow">Manual export</div>
-            <h2>ThinkScript Generator</h2>
+            <h2>Pine Script Generator</h2>
             <p>
-              Creates one ES-chart ThinkScript from the newest pusherman3000 folder.
+              Creates one TradingView Pine Script v6 for ES charts from the newest pusherman3000 folder.
               Each bucket uses its newest timestamp, GEX rows only, with Theo ES as the plotted price.
             </p>
           </div>
         </header>
 
-        <div class="thinkscript-manual-note">
+        <div class="pinescript-manual-note">
           Nothing is fetched or regenerated automatically. Data is loaded only when you press
-          <strong>Generate ThinkScript</strong>.
+          <strong>Generate Pine Script</strong>.
         </div>
 
-        <div class="thinkscript-summary-grid">
-          <article class="thinkscript-summary-card">
+        <div class="pinescript-summary-grid">
+          <article class="pinescript-summary-card">
             <span>Latest folder</span>
-            <strong id="thinkscriptFolder">—</strong>
+            <strong id="pinescriptFolder">—</strong>
           </article>
-          <article class="thinkscript-summary-card">
+          <article class="pinescript-summary-card">
             <span>Buckets loaded</span>
-            <strong id="thinkscriptBucketCount">—</strong>
+            <strong id="pinescriptBucketCount">—</strong>
           </article>
-          <article class="thinkscript-summary-card">
+          <article class="pinescript-summary-card">
             <span>GEX levels</span>
-            <strong id="thinkscriptLevelCount">—</strong>
+            <strong id="pinescriptLevelCount">—</strong>
           </article>
-          <article class="thinkscript-summary-card">
-            <span>Price source</span>
-            <strong>Theo ES</strong>
+          <article class="pinescript-summary-card">
+            <span>Platform / price</span>
+            <strong>TradingView · Theo ES</strong>
           </article>
         </div>
 
-        <article class="panel thinkscript-source-panel">
+        <article class="panel pinescript-source-panel">
           <div class="panel-header">
             <div>
               <div class="panel-kicker">Pusherman3000 validation</div>
@@ -216,8 +216,8 @@
             <small>Expected: 10 GEX ranks per bucket</small>
           </div>
 
-          <div class="thinkscript-table-wrap">
-            <table class="thinkscript-table">
+          <div class="pinescript-table-wrap">
+            <table class="pinescript-table">
               <thead>
                 <tr>
                   <th>Bucket</th>
@@ -226,30 +226,30 @@
                   <th>Status</th>
                 </tr>
               </thead>
-              <tbody id="thinkscriptBucketTable">
-                <tr class="thinkscript-placeholder-row">
-                  <td colspan="4">Press Generate ThinkScript to load the latest data.</td>
+              <tbody id="pinescriptBucketTable">
+                <tr class="pinescript-placeholder-row">
+                  <td colspan="4">Press Generate Pine Script to load the latest data.</td>
                 </tr>
               </tbody>
             </table>
           </div>
         </article>
 
-        <article class="panel thinkscript-output-panel">
+        <article class="panel pinescript-output-panel">
           <div class="generator-toolbar">
-            <button id="generateThinkscript" class="primary-button">Generate ThinkScript</button>
-            <button id="copyThinkscript" class="ghost-button" disabled>Copy code</button>
-            <button id="downloadThinkscript" class="ghost-button" disabled>Download .txt</button>
-            <small id="thinkscriptStatus">Ready — manual generation only.</small>
+            <button id="generatePinescript" class="primary-button">Generate Pine Script</button>
+            <button id="copyPinescript" class="ghost-button" disabled>Copy code</button>
+            <button id="downloadPinescript" class="ghost-button" disabled>Download .pine</button>
+            <small id="pinescriptStatus">Ready — manual generation only.</small>
           </div>
 
           <textarea
-            id="thinkscriptOutput"
+            id="pinescriptOutput"
             spellcheck="false"
-            placeholder="Generated ThinkScript will appear here after you press Generate ThinkScript…"
+            placeholder="Generated TradingView Pine Script v6 will appear here after you press Generate Pine Script…"
           ></textarea>
 
-          <div id="thinkscriptError" class="inline-error hidden"></div>
+          <div id="pinescriptError" class="inline-error hidden"></div>
         </article>
       </section>
 
@@ -265,5 +265,5 @@
     </div>
   </main>
 </div>
-<script src="config.js?v=1.1.0"></script><script src="app.js?v=1.1.0"></script>
+<script src="config.js?v=1.2.0"></script><script src="app.js?v=1.2.0"></script>
 </body></html>
