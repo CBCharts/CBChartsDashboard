@@ -6,7 +6,7 @@
   const $ = (id) => document.getElementById(id);
 
   const state = {
-    view: "snapshot",
+    view: "overview",
     bucket: C.defaultBucket,
     greek: C.defaultGreek,
     ratpack: null,
@@ -2774,17 +2774,45 @@
       section.classList.remove("active");
     });
 
-    $(`view-${view}`).classList.add("active");
+    const target = $(`view-${view}`);
+    if (!target) return;
 
-    $("pageTitle").textContent = {
-      snapshot: "Snapshot",
-      timelapse: "Timelapse",
-      repos: "Repo's",
-      pinescript: "Script Generator",
-      howto: "How-To"
-    }[view];
+    target.classList.add("active");
 
-    if (view === "timelapse" && !state.history) loadHistory();
+    // Market controls are useful for the three market-data views, but are
+    // intentionally removed from Repo's, Script Generator, and How-To to keep
+    // those pages clean—especially on mobile.
+    const marketView = ["overview", "snapshot", "timelapse"].includes(view);
+    $("marketControls").classList.toggle("hidden", !marketView);
+
+    if (view === "overview") {
+      renderSpotPrices();
+
+      requestAnimationFrame(() => {
+        ["Ratio", "Total", "Call", "Put"].forEach((metric) => {
+          resizePlotlyElement(`gauge-${metric}`);
+        });
+      });
+    }
+
+    if (view === "snapshot") {
+      // Snapshot Plotly elements may have originally rendered while hidden
+      // because Overview is now the default landing page.
+      requestAnimationFrame(() => {
+        resizePlotlyElement("voltraChart");
+        resizeEmbeddedVisual();
+      });
+    }
+
+    if (view === "timelapse") {
+      if (!state.history) {
+        loadHistory();
+      } else {
+        requestAnimationFrame(() => {
+          resizePlotlyElement("timelapseChart");
+        });
+      }
+    }
   }
 
   async function refreshLive() {
@@ -2935,9 +2963,8 @@
       loadVoltra();
       loadTheoEsBasis();
 
-      // SPX lives inside the Plotly HTML, so refresh that HTML each minute
-      // even when another left-nav view is open. The iframe is only visible
-      // on Snapshot, but the top spot cards remain current everywhere.
+      // SPX lives inside the Plotly HTML. Keep it current so the dedicated
+      // Live Overview is ready whenever the user returns to that tab.
       loadVisual();
     }, C.refreshMs);
   }

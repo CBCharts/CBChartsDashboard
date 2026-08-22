@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#080d14">
   <title>CBCharts Market Dashboard</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=1.3.0">
+  <link rel="stylesheet" href="styles.css?v=1.4.0">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 </head>
@@ -15,7 +15,8 @@
   <aside class="sidebar">
     <div class="brand"><div class="brand-mark">CB</div><div><div class="brand-name">CBCharts</div><div class="brand-sub">Market Intelligence</div></div></div>
     <nav class="nav-list">
-      <button class="nav-item active" data-view="snapshot"><span>◫</span><b>Snapshot</b></button>
+      <button class="nav-item active" data-view="overview"><span>◎</span><b>Live Overview</b></button>
+      <button class="nav-item" data-view="snapshot"><span>◫</span><b>Snapshot</b></button>
       <button class="nav-item" data-view="timelapse"><span>▶</span><b>Timelapse</b></button>
       <button class="nav-item" data-view="repos"><span>⌘</span><b>Repo's</b></button>
       <button class="nav-item" data-view="pinescript"><span>ƒ</span><b>Script Generator</b></button>
@@ -25,10 +26,28 @@
   </aside>
 
   <main class="main-pane">
-    <section class="market-overview">
+    <section id="marketControls" class="market-controls" aria-label="Market controls">
+      <div class="toolbar-controls">
+        <label><span>Expiration bucket</span><select id="bucketSelect"></select></label>
+        <label><span>Focus Greek</span><select id="greekSelect"><option>GEX</option><option>CEX</option><option>DEX</option><option>VEX</option></select></label>
+        <label class="graph-size-control">
+          <span>Graph size</span>
+          <select id="graphSizeSelect">
+            <option value="compact">Compact</option>
+            <option value="standard" selected>Standard</option>
+            <option value="large">Large</option>
+          </select>
+        </label>
+        <button id="refreshButton" class="ghost-button">Refresh</button>
+      </div>
+    </section>
+
+    <div class="view-stack">
+      <section id="view-overview" class="view active">
+        <section class="market-overview">
       <div class="overview-toolbar">
         <div class="overview-title-block">
-          <div><div class="eyebrow">Live market overview</div><h1 id="pageTitle">Snapshot</h1></div>
+          <div><div class="eyebrow">Current market state</div><h1>Live Market Overview</h1></div>
 
           <div class="spot-price-strip" aria-label="Spot prices">
             <article id="spxSpotCard" class="spot-price-card unavailable">
@@ -49,26 +68,15 @@
           </div>
         </div>
 
-        <div class="toolbar-controls">
-          <label><span>Expiration bucket</span><select id="bucketSelect"></select></label>
-          <label><span>Focus Greek</span><select id="greekSelect"><option>GEX</option><option>CEX</option><option>DEX</option><option>VEX</option></select></label>
-          <label class="graph-size-control">
-            <span>Graph size</span>
-            <select id="graphSizeSelect">
-              <option value="compact">Compact</option>
-              <option value="standard" selected>Standard</option>
-              <option value="large">Large</option>
-            </select>
-          </label>
-          <button id="refreshButton" class="ghost-button">Refresh</button>
-        </div>
+
       </div>
       <div id="gaugeGrid" class="gauge-grid"></div>
       <div id="overviewError" class="inline-error hidden"></div>
     </section>
 
-    <div class="view-stack">
-      <section id="view-snapshot" class="view active">
+      </section>
+
+      <section id="view-snapshot" class="view">
         <header class="section-heading">
           <div><div class="eyebrow">Current positioning</div><h2>Strike snapshot</h2><p>Live Voltra strike distribution and the latest Brent Black-Scholes Plotly output.</p></div>
           <div class="snapshot-metric-control">
@@ -289,5 +297,5 @@
     </div>
   </main>
 </div>
-<script src="config.js?v=1.3.0"></script><script src="app.js?v=1.3.0"></script>
+<script src="config.js?v=1.4.0"></script><script src="app.js?v=1.4.0"></script>
 </body></html>

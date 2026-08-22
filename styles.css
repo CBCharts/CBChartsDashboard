@@ -122,14 +122,21 @@ textarea { font: inherit; }
   min-height: 100vh;
 }
 
-.market-overview {
-  position: sticky;
-  top: 0;
-  z-index: 30;
-  padding: 18px 24px 14px;
-  background: rgba(7,11,17,.95);
-  backdrop-filter: blur(16px);
+.market-controls {
+  padding: 10px 24px;
+  background: rgba(7,11,17,.97);
   border-bottom: 1px solid var(--line);
+}
+
+.market-controls .toolbar-controls {
+  justify-content: flex-end;
+}
+
+.market-overview {
+  position: relative;
+  padding: 0;
+  background: transparent;
+  border-bottom: 0;
 }
 
 .overview-toolbar,
@@ -976,10 +983,41 @@ input[type="date"] {
     width: 100%;
     min-width: 0;
   }
-  .market-overview { position: relative; }
+  .market-controls {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .market-controls .toolbar-controls {
+    width: 100%;
+  }
 }
 
 @media (max-width: 620px) {
+  .market-controls {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+
+  .market-controls .toolbar-controls {
+    gap: 7px;
+  }
+
+  .market-controls .toolbar-controls label {
+    flex: 1 1 calc(50% - 7px);
+    min-width: 0;
+  }
+
+  .market-controls .toolbar-controls select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .market-controls #refreshButton {
+    flex: 1 1 100%;
+  }
+
+
   .pinescript-summary-grid {
     grid-template-columns: 1fr 1fr;
   }
@@ -1054,4 +1092,14 @@ input[type="date"] {
   .timelapse-toolbar,
   .timeline-wrap { flex-direction: column; align-items: stretch; }
   .timeline-wrap span { text-align: left; }
+}
+
+
+/* v1.4 — dedicated Live Overview page */
+#view-overview .overview-toolbar {
+  margin-bottom: 16px;
+}
+
+#view-overview .gauge-grid {
+  margin-top: 4px;
 }
