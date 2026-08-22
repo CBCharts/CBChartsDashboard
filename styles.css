@@ -143,6 +143,82 @@ textarea { font: inherit; }
 
 .overview-toolbar { margin-bottom: 12px; }
 
+.overview-title-block {
+  display: flex;
+  align-items: flex-end;
+  gap: 18px;
+  min-width: 0;
+}
+
+.spot-price-strip {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.spot-price-card,
+.spot-time {
+  min-width: 128px;
+  padding: 7px 10px 8px;
+  border: 1px solid #2a3b50;
+  border-radius: 9px;
+  background: linear-gradient(180deg, #111b27, #0d151f);
+}
+
+.spot-price-card.theo {
+  border-color: rgba(244,185,66,.34);
+}
+
+.spot-time {
+  min-width: 168px;
+  border-color: rgba(126,194,255,.18);
+}
+
+.spot-price-card.unavailable {
+  opacity: .62;
+}
+
+.spot-price-label {
+  color: #7ec2ff;
+  font-size: 8px;
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.spot-price-card.theo .spot-price-label {
+  color: #f4c75e;
+}
+
+.spot-price-value {
+  margin-top: 4px;
+  color: #f2f7fc;
+  font-size: 17px;
+  line-height: 1.05;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.02em;
+  white-space: nowrap;
+}
+
+.spot-price-meta {
+  display: none;
+}
+
+.spot-time-value {
+  margin-top: 4px;
+  color: #c3d0df;
+  font-size: 13px;
+  line-height: 1.05;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+
 .eyebrow,
 .panel-kicker {
   color: #7ec2ff;
@@ -621,10 +697,12 @@ input[type="date"] {
 
   .spot-price-strip {
     width: 100%;
+    flex-wrap: wrap;
   }
 
-  .spot-price-card {
-    flex: 1 1 0;
+  .spot-price-card,
+  .spot-time {
+    flex: 1 1 128px;
     min-width: 0;
   }
 
@@ -663,12 +741,17 @@ input[type="date"] {
     gap: 6px;
   }
 
-  .spot-price-card {
+  .spot-price-card,
+  .spot-time {
     padding: 7px 8px;
   }
 
   .spot-price-value {
     font-size: 15px;
+  }
+
+  .spot-time-value {
+    font-size: 12px;
   }
 
   :root { --sidebar: 0px; }
