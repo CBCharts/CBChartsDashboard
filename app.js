@@ -18,6 +18,7 @@
     multiMetrics: ["volume"],
     graphSize: "standard",
     timelapseMode: "levels",
+    playbackSpeed: 1,
     spxSpot: null,
     theoEsBasis: null,
     latestPushermanFolders: [],
@@ -1835,6 +1836,41 @@
     }
   }
 
+  const PLAYBACK_BASE_DELAY_MS = 180;
+
+  function playbackDelayMs() {
+    const speed = Number(state.playbackSpeed);
+
+    if (!Number.isFinite(speed) || speed <= 0) {
+      return PLAYBACK_BASE_DELAY_MS;
+    }
+
+    // Protect the browser from extremely aggressive Plotly redraw loops.
+    return Math.max(70, Math.round(PLAYBACK_BASE_DELAY_MS / speed));
+  }
+
+  function playbackTick() {
+    if (!state.history?.frames.length) return;
+
+    const next =
+      state.frame >= state.history.frames.length - 1
+        ? 0
+        : state.frame + 1;
+
+    updateFrame(next);
+  }
+
+  function schedulePlayback() {
+    if (state.playTimer) {
+      clearInterval(state.playTimer);
+    }
+
+    state.playTimer = setInterval(
+      playbackTick,
+      playbackDelayMs()
+    );
+  }
+
   function startPlayback() {
     if (!state.history?.frames.length) return;
 
@@ -1844,16 +1880,33 @@
     }
 
     $("playButton").textContent = "❚❚ Pause";
-    state.playTimer = setInterval(() => {
-      const next = state.frame >= state.history.frames.length - 1 ? 0 : state.frame + 1;
-      updateFrame(next);
-    }, 180);
+    schedulePlayback();
   }
 
   function stopPlayback() {
     if (state.playTimer) clearInterval(state.playTimer);
     state.playTimer = null;
     $("playButton").textContent = "▶ Play";
+  }
+
+  function setPlaybackSpeed(value) {
+    const speed = Number(value);
+
+    state.playbackSpeed =
+      Number.isFinite(speed) && speed > 0
+        ? speed
+        : 1;
+
+    const select = $("playbackSpeedSelect");
+    if (select) {
+      select.value = String(state.playbackSpeed);
+    }
+
+    // If currently playing, immediately apply the new interval without
+    // resetting the current frame or changing chart mode.
+    if (state.playTimer) {
+      schedulePlayback();
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -2054,6 +2107,11 @@
     });
 
     $("playButton").addEventListener("click", startPlayback);
+
+    $("playbackSpeedSelect").addEventListener("change", (event) => {
+      setPlaybackSpeed(event.target.value);
+    });
+
     $("resetButton").addEventListener("click", () => {
       stopPlayback();
       updateFrame(0);

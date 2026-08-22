@@ -601,6 +601,28 @@ input[type="date"] {
   flex-wrap: wrap;
 }
 
+.playback-speed-control {
+  display: grid;
+  gap: 3px;
+  margin-left: 2px;
+}
+
+.playback-speed-control span {
+  color: #7f92a8;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.playback-speed-control select {
+  min-width: 76px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 7px;
+  font-size: 11px;
+}
+
 .timelapse-mode-toggle {
   display: inline-flex;
   align-items: center;

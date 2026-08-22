@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#080d14">
   <title>CBCharts Market Dashboard</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=0.7.1">
+  <link rel="stylesheet" href="styles.css?v=0.7.2">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 </head>
@@ -122,6 +122,17 @@
               <button id="playButton" class="primary-button">▶ Play</button>
               <button id="resetButton" class="ghost-button">Reset</button>
 
+              <label class="playback-speed-control">
+                <span>Speed</span>
+                <select id="playbackSpeedSelect" aria-label="Timelapse playback speed">
+                  <option value="0.25">0.25×</option>
+                  <option value="0.5">0.5×</option>
+                  <option value="1" selected>1×</option>
+                  <option value="1.5">1.5×</option>
+                  <option value="2">2×</option>
+                </select>
+              </label>
+
               <div class="timelapse-mode-toggle" role="group" aria-label="Timelapse chart type">
                 <button
                   type="button"
@@ -177,5 +188,5 @@
     </div>
   </main>
 </div>
-<script src="config.js?v=0.7.1"></script><script src="app.js?v=0.7.1"></script>
+<script src="config.js?v=0.7.2"></script><script src="app.js?v=0.7.2"></script>
 </body></html>
