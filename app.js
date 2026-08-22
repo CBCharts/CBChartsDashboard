@@ -1927,62 +1927,547 @@
     `).join("");
   }
 
-  async function generateThinkscript() {
-    clearError("thinkscriptError");
-    const date = ymd($("thinkscriptDate").value);
-    $("thinkscriptStatus").textContent = "Loading…";
+  const THINKSCRIPT_BUCKETS = [
+    {
+      key: "0dte",
+      label: "0DTE",
+      prefix: "d0",
+      showInput: "show0DTE",
+      colorName: "Bucket0DTE",
+      color: [207, 238, 219]
+    },
+    {
+      key: "1dte",
+      label: "1DTE",
+      prefix: "d1",
+      showInput: "show1DTE",
+      colorName: "Bucket1DTE",
+      color: [255, 246, 201]
+    },
+    {
+      key: "EoW",
+      label: "EoW",
+      prefix: "eow",
+      showInput: "showEOW",
+      colorName: "BucketEOW",
+      color: [255, 167, 38]
+    },
+    {
+      key: "EoM",
+      label: "EoM",
+      prefix: "eom",
+      showInput: "showEOM",
+      colorName: "BucketEOM",
+      color: [255, 82, 82]
+    },
+    {
+      key: "nex_EoW",
+      label: "Next Week",
+      prefix: "nw",
+      showInput: "showNextWeek",
+      colorName: "BucketNextWeek",
+      color: [255, 246, 201]
+    },
+    {
+      key: "nex_EoM",
+      label: "Next Month",
+      prefix: "nm",
+      showInput: "showNextMonth",
+      colorName: "BucketNextMonth",
+      color: [255, 183, 77]
+    },
+    {
+      key: "Full",
+      label: "Full",
+      prefix: "full",
+      showInput: "showFull",
+      colorName: "BucketFull",
+      color: [161, 39, 42]
+    }
+  ];
 
-    try {
-      const text = await fetchText(raw("pusherman3000", historicalPath(date), false));
-      const history = buildHistory(parseCSV(text));
-      const frame = history.frames[history.frames.length - 1];
+  const THINKSCRIPT_RANKS = [
+    { rank: "Call GEX 1", side: "Call", number: 1, suffix: "c1", showInput: "showCallGEX1", colorName: "Call1", color: [139, 30, 44] },
+    { rank: "Call GEX 2", side: "Call", number: 2, suffix: "c2", showInput: "showCallGEX2", colorName: "Call2", color: [178, 34, 52] },
+    { rank: "Call GEX 3", side: "Call", number: 3, suffix: "c3", showInput: "showCallGEX3", colorName: "Call3", color: [224, 85, 98] },
+    { rank: "Call GEX 4", side: "Call", number: 4, suffix: "c4", showInput: "showCallGEX4", colorName: "Call4", color: [242, 138, 147] },
+    { rank: "Call GEX 5", side: "Call", number: 5, suffix: "c5", showInput: "showCallGEX5", colorName: "Call5", color: [248, 184, 190] },
+    { rank: "Put GEX 1", side: "Put", number: 1, suffix: "p1", showInput: "showPutGEX1", colorName: "Put1", color: [14, 64, 46] },
+    { rank: "Put GEX 2", side: "Put", number: 2, suffix: "p2", showInput: "showPutGEX2", colorName: "Put2", color: [30, 111, 58] },
+    { rank: "Put GEX 3", side: "Put", number: 3, suffix: "p3", showInput: "showPutGEX3", colorName: "Put3", color: [46, 139, 87] },
+    { rank: "Put GEX 4", side: "Put", number: 4, suffix: "p4", showInput: "showPutGEX4", colorName: "Put4", color: [126, 207, 138] },
+    { rank: "Put GEX 5", side: "Put", number: 5, suffix: "p5", showInput: "showPutGEX5", colorName: "Put5", color: [207, 238, 214] }
+  ];
 
-      if (!frame) throw new Error("No matching ranked levels.");
+  const THINKSCRIPT_RANK_MAP = new Map(
+    THINKSCRIPT_RANKS.map((item, index) => [item.rank, { ...item, order: index }])
+  );
 
-      const output = [
-        "# CBCharts generated ranked levels",
-        `# Source: ${date} ${C.buckets[state.bucket].label} ${state.greek}`,
-        `# Frame: ${frame.timestamp}`,
-        "",
-        "input showLabels = yes;",
-        ""
-      ];
+  function thinkscriptNumber(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number.toFixed(2) : "0.00";
+  }
 
-      for (const key of history.keys) {
-        const point = frame.ranks[key];
-        if (!point) continue;
+  function thinkscriptSafeText(value) {
+    return String(value ?? "")
+      .replaceAll("\\", "\\\\")
+      .replaceAll('"', '\\"');
+  }
 
-        const variable = key.replaceAll(" ", "_");
-        const color = key.startsWith("Call") ? "Color.GREEN" : "Color.RED";
+  function latestTimestampFromRows(rows) {
+    return rows
+      .map((row) => row.timestamp)
+      .filter(Boolean)
+      .map(String)
+      .sort()
+      .at(-1) || null;
+  }
 
-        output.push(
-          `plot ${variable} = ${formatCodeNumber(point.strike)};`,
-          `${variable}.SetDefaultColor(${color});`,
-          `${variable}.SetPaintingStrategy(PaintingStrategy.HORIZONTAL);`,
-          `${variable}.SetLineWeight(2);`,
-          ""
-        );
+  function normalizeThinkscriptBucket(rows, bucket) {
+    const timestamp = latestTimestampFromRows(rows);
+
+    if (!timestamp) {
+      throw new Error("No valid timestamp found.");
+    }
+
+    const latestGexRows = rows
+      .filter((row) =>
+        String(row.timestamp) === timestamp &&
+        String(row.Greek || "").toUpperCase() === "GEX" &&
+        THINKSCRIPT_RANK_MAP.has(String(row.Rank)) &&
+        Number.isFinite(Number(row["Theo ES"])) &&
+        Number.isFinite(Number(row.Value))
+      )
+      .map((row) => {
+        const rankMeta = THINKSCRIPT_RANK_MAP.get(String(row.Rank));
+
+        return {
+          bucketKey: bucket.key,
+          bucketLabel: bucket.label,
+          bucketPrefix: bucket.prefix,
+          bucketShowInput: bucket.showInput,
+          bucketColorName: bucket.colorName,
+          timestamp,
+          rank: String(row.Rank),
+          rankOrder: rankMeta.order,
+          rankSuffix: rankMeta.suffix,
+          rankShowInput: rankMeta.showInput,
+          rankColorName: rankMeta.colorName,
+          side: rankMeta.side,
+          rankNumber: rankMeta.number,
+          theoES: Number(row["Theo ES"]),
+          strikePrice: Number(row.strikePrice),
+          value: Number(row.Value)
+        };
+      })
+      .sort((a, b) => a.rankOrder - b.rankOrder);
+
+    // If duplicate rows somehow exist for a rank at the same timestamp,
+    // keep the last one so each bucket contributes at most 10 levels.
+    const byRank = new Map();
+    latestGexRows.forEach((level) => byRank.set(level.rank, level));
+
+    const levels = THINKSCRIPT_RANKS
+      .map((rankMeta) => byRank.get(rankMeta.rank))
+      .filter(Boolean);
+
+    return {
+      bucket,
+      timestamp,
+      levels,
+      missingRanks: THINKSCRIPT_RANKS
+        .map((rankMeta) => rankMeta.rank)
+        .filter((rank) => !byRank.has(rank))
+    };
+  }
+
+  function groupThinkscriptLevelsByPrice(levels) {
+    const groups = new Map();
+
+    levels.forEach((level) => {
+      // Match the old Python generator: hardcoded Theo ES levels are
+      // generated to two decimals.
+      const price = thinkscriptNumber(level.theoES);
+
+      if (!groups.has(price)) {
+        groups.set(price, []);
       }
 
-      if (Number.isFinite(frame.theo)) {
-        output.push(
-          `plot Theo_ES = ${formatCodeNumber(frame.theo)};`,
-          "Theo_ES.SetDefaultColor(Color.YELLOW);",
-          "Theo_ES.SetStyle(Curve.SHORT_DASH);",
-          ""
+      groups.get(price).push({
+        ...level,
+        generatedPrice: price
+      });
+    });
+
+    return [...groups.entries()]
+      .map(([price, members]) => {
+        // PineScript line-owner logic: highest absolute Value owns the line.
+        const ownerOrder = [...members].sort(
+          (a, b) => Math.abs(b.value) - Math.abs(a.value)
         );
-      }
+
+        // PineScript label stacking uses raw Value descending.
+        const labelOrder = [...members].sort(
+          (a, b) => b.value - a.value
+        );
+
+        const labelOffset = new Map(
+          labelOrder.map((level, index) => [
+            `${level.bucketPrefix}_${level.rankSuffix}`,
+            index + 1
+          ])
+        );
+
+        return {
+          price,
+          members,
+          ownerOrder,
+          labelOffset
+        };
+      })
+      .sort((a, b) => Number(a.price) - Number(b.price));
+  }
+
+  function buildThinkscriptSource(snapshot) {
+    const { folder, bucketResults, levels } = snapshot;
+    const groups = groupThinkscriptLevelsByPrice(levels);
+    const output = [];
+
+    output.push(
+      "# ================================================================",
+      "# CBCharts GEX Levels for ES",
+      `# Pusherman folder: ${folder}`,
+      "# Source rule: newest timestamp per bucket, Greek == GEX",
+      "# Price used on ES chart: Theo ES",
+      "# Generated manually from CBChartsDashboard",
+      `# Generated: ${new Date().toLocaleString()}`,
+      "# ================================================================",
+      "",
+      "declare upper;",
+      "",
+      "# -------------------------------",
+      "# DISPLAY INPUTS",
+      "# -------------------------------",
+      "input showLabels = yes;",
+      "input labelOffsetTicks = 4;",
+      "input showHeaderLabel = yes;",
+      ""
+    );
+
+    THINKSCRIPT_BUCKETS.forEach((bucket) => {
+      output.push(
+        `input ${bucket.showInput} = yes;`
+      );
+    });
+
+    output.push("");
+
+    THINKSCRIPT_RANKS.forEach((rank) => {
+      output.push(
+        `input ${rank.showInput} = yes;`
+      );
+    });
+
+    output.push(
+      "",
+      "# -------------------------------",
+      "# GLOBAL COLORS",
+      "# -------------------------------"
+    );
+
+    THINKSCRIPT_RANKS.forEach((rank) => {
+      output.push(
+        `DefineGlobalColor("${rank.colorName}", CreateColor(${rank.color.join(", ")}));`
+      );
+    });
+
+    output.push("");
+
+    THINKSCRIPT_BUCKETS.forEach((bucket) => {
+      output.push(
+        `DefineGlobalColor("${bucket.colorName}", CreateColor(${bucket.color.join(", ")}));`
+      );
+    });
+
+    output.push(
+      "",
+      "# -------------------------------",
+      "# SNAPSHOT METADATA",
+      "# -------------------------------",
+      `AddLabel(showHeaderLabel, "CBCharts GEX | ${folder}", Color.LIGHT_GRAY);`
+    );
+
+    bucketResults.forEach((result) => {
+      if (!result.ok) return;
 
       output.push(
-        `AddLabel(showLabels, "${C.buckets[state.bucket].label} ${state.greek} | ${frame.timestamp}", Color.LIGHT_GRAY);`
+        `AddLabel(showHeaderLabel and ${result.bucket.showInput}, "${thinkscriptSafeText(result.bucket.label)} | ${thinkscriptSafeText(result.timestamp)}", GlobalColor("${result.bucket.colorName}"));`
+      );
+    });
+
+    output.push(
+      "",
+      "# -------------------------------",
+      "# HARDCODED GEX DATA",
+      "# -------------------------------",
+      "def cbLastBar = !IsNaN(close) and IsNaN(close[-1]);",
+      "def cbLabelStep = labelOffsetTicks * TickSize();",
+      ""
+    );
+
+    levels.forEach((level) => {
+      const id = `${level.bucketPrefix}_${level.rankSuffix}`;
+
+      output.push(
+        `# ${level.bucketLabel} | ${level.rank} | ${level.timestamp}`,
+        `def px_${id} = ${thinkscriptNumber(level.theoES)};`,
+        `def val_${id} = ${thinkscriptNumber(level.value)};`,
+        `def vis_${id} = ${level.bucketShowInput} and ${level.rankShowInput};`,
+        ""
+      );
+    });
+
+    output.push(
+      "# -------------------------------",
+      "# PRICE-DEDUPED HORIZONTAL LEVELS",
+      "# -------------------------------"
+    );
+
+    groups.forEach((group, index) => {
+      const plotName = `GEX_Level_${String(index + 1).padStart(3, "0")}`;
+      const visibility = group.ownerOrder
+        .map((level) => `vis_${level.bucketPrefix}_${level.rankSuffix}`)
+        .join(" or ");
+
+      const colorExpression = group.ownerOrder
+        .map((level) =>
+          `if vis_${level.bucketPrefix}_${level.rankSuffix} then GlobalColor("${level.rankColorName}")`
+        )
+        .join(" else ");
+
+      output.push(
+        `# Theo ES ${group.price} | ${group.members.length} source level${group.members.length === 1 ? "" : "s"}`,
+        `plot ${plotName} = if ${visibility} then ${group.price} else Double.NaN;`,
+        `${plotName}.SetPaintingStrategy(PaintingStrategy.HORIZONTAL);`,
+        `${plotName}.SetLineWeight(2);`,
+        `${plotName}.SetDefaultColor(Color.GRAY);`,
+        `${plotName}.AssignValueColor(${colorExpression} else Color.GRAY);`,
+        `${plotName}.HideTitle();`,
+        `${plotName}.HideBubble();`,
+        ""
+      );
+    });
+
+    output.push(
+      "# -------------------------------",
+      "# LEVEL LABELS",
+      "# -------------------------------"
+    );
+
+    groups.forEach((group) => {
+      group.members.forEach((level) => {
+        const id = `${level.bucketPrefix}_${level.rankSuffix}`;
+        const offset = group.labelOffset.get(id) || 1;
+        const labelText =
+          `${thinkscriptSafeText(level.bucketLabel)} | ` +
+          `${thinkscriptSafeText(level.rank)}`;
+
+        output.push(
+          `AddChartBubble(`,
+          `    showLabels and cbLastBar and vis_${id},`,
+          `    px_${id} - (${offset} * cbLabelStep),`,
+          `    "${labelText}",`,
+          `    GlobalColor("${level.bucketColorName}"),`,
+          `    no`,
+          `);`
+        );
+      });
+    });
+
+    output.push(
+      "",
+      "# ================================================================",
+      "# END CBCharts GENERATED GEX LEVELS",
+      "# ================================================================"
+    );
+
+    return output.join("\n");
+  }
+
+  function renderThinkscriptSnapshot(snapshot) {
+    const folder = snapshot?.folder || "—";
+    const successful = snapshot?.bucketResults?.filter((result) => result.ok) || [];
+    const totalLevels = snapshot?.levels?.length || 0;
+
+    $("thinkscriptFolder").textContent = folder;
+    $("thinkscriptBucketCount").textContent =
+      `${successful.length}/${THINKSCRIPT_BUCKETS.length}`;
+    $("thinkscriptLevelCount").textContent = String(totalLevels);
+
+    const table = $("thinkscriptBucketTable");
+
+    if (!snapshot?.bucketResults?.length) {
+      table.innerHTML = "";
+      return;
+    }
+
+    table.innerHTML = snapshot.bucketResults.map((result) => {
+      if (!result.ok) {
+        return `
+          <tr class="thinkscript-row-error">
+            <td>${result.bucket.label}</td>
+            <td>Unavailable</td>
+            <td>0/10</td>
+            <td>${result.message}</td>
+          </tr>
+        `;
+      }
+
+      const missing = result.data.missingRanks.length;
+      const warning = missing
+        ? `Missing: ${result.data.missingRanks.join(", ")}`
+        : "Ready";
+
+      return `
+        <tr class="${missing ? "thinkscript-row-warning" : ""}">
+          <td>${result.bucket.label}</td>
+          <td>${result.data.timestamp}</td>
+          <td>${result.data.levels.length}/10</td>
+          <td>${warning}</td>
+        </tr>
+      `;
+    }).join("");
+  }
+
+  async function fetchThinkscriptSnapshot() {
+    const folders = await getLatestPushermanFolders(true);
+    const folder = folders[0];
+
+    if (!folder) {
+      throw new Error("Could not determine the newest pusherman3000 folder.");
+    }
+
+    $("thinkscriptStatus").textContent =
+      `Loading ${THINKSCRIPT_BUCKETS.length} bucket files from ${folder}…`;
+
+    const results = await Promise.all(
+      THINKSCRIPT_BUCKETS.map(async (bucket) => {
+        const fileName = C.buckets[bucket.key]?.pusherman;
+
+        if (!fileName) {
+          return {
+            ok: false,
+            bucket,
+            message: "No pusherman filename is configured."
+          };
+        }
+
+        const path = `${folder}/brent_bs/${fileName}`;
+
+        try {
+          // Manual generator: favor correctness over bandwidth optimization.
+          // We fetch the complete CSV, explicitly select its newest timestamp,
+          // and then keep GEX only.
+          const text = await fetchText(raw("pusherman3000", path));
+          const rows = parseCSV(text);
+          const data = normalizeThinkscriptBucket(rows, bucket);
+
+          return {
+            ok: true,
+            bucket,
+            fileName,
+            data
+          };
+        } catch (error) {
+          return {
+            ok: false,
+            bucket,
+            fileName,
+            message: error.message
+          };
+        }
+      })
+    );
+
+    const levels = results
+      .filter((result) => result.ok)
+      .flatMap((result) => result.data.levels);
+
+    if (!levels.length) {
+      throw new Error(
+        `No valid GEX levels were found in the latest folder (${folder}).`
+      );
+    }
+
+    return {
+      folder,
+      bucketResults: results,
+      levels
+    };
+  }
+
+  async function generateThinkscript() {
+    clearError("thinkscriptError");
+
+    const button = $("generateThinkscript");
+    button.disabled = true;
+    button.textContent = "Generating…";
+    $("copyThinkscript").disabled = true;
+    $("downloadThinkscript").disabled = true;
+    $("thinkscriptStatus").textContent = "Finding latest pusherman3000 folder…";
+
+    try {
+      const snapshot = await fetchThinkscriptSnapshot();
+      const source = buildThinkscriptSource(snapshot);
+
+      $("thinkscriptOutput").value = source;
+      renderThinkscriptSnapshot(snapshot);
+
+      const successful = snapshot.bucketResults.filter((result) => result.ok);
+      const warnings = successful.reduce(
+        (count, result) => count + result.data.missingRanks.length,
+        0
       );
 
-      $("thinkscriptOutput").value = output.join("\n");
-      $("thinkscriptStatus").textContent = `Generated from ${frame.timestamp}`;
+      $("thinkscriptStatus").textContent =
+        `Generated ${snapshot.levels.length} GEX levels from ${snapshot.folder}` +
+        (warnings ? ` · ${warnings} missing rank warning${warnings === 1 ? "" : "s"}` : "");
+
+      $("copyThinkscript").disabled = false;
+      $("downloadThinkscript").disabled = false;
+      $("downloadThinkscript").dataset.folder = snapshot.folder;
     } catch (error) {
+      $("thinkscriptOutput").value = "";
+      renderThinkscriptSnapshot(null);
       $("thinkscriptStatus").textContent = "Generation failed";
-      showError("thinkscriptError", `Could not generate ThinkScript: ${error.message}`);
+      showError(
+        "thinkscriptError",
+        `Could not generate ThinkScript: ${error.message}`
+      );
+    } finally {
+      button.disabled = false;
+      button.textContent = "Generate ThinkScript";
     }
+  }
+
+  function downloadThinkscript() {
+    const text = $("thinkscriptOutput").value;
+    if (!text) return;
+
+    const folder = $("downloadThinkscript").dataset.folder || "latest";
+    const blob = new Blob([text], {
+      type: "text/plain;charset=utf-8"
+    });
+
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `CBCharts_GEX_ES_${folder}.txt`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+
+    setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 
   // ---------------------------------------------------------------------------
@@ -2118,6 +2603,7 @@
     });
 
     $("generateThinkscript").addEventListener("click", generateThinkscript);
+
     $("copyThinkscript").addEventListener("click", async () => {
       const text = $("thinkscriptOutput").value;
       if (!text) return;
@@ -2128,6 +2614,8 @@
         $("copyThinkscript").textContent = "Copy code";
       }, 1000);
     });
+
+    $("downloadThinkscript").addEventListener("click", downloadThinkscript);
   }
 
   async function init() {

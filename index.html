@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#080d14">
   <title>CBCharts Market Dashboard</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=0.7.2">
+  <link rel="stylesheet" href="styles.css?v=1.1.0">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 </head>
@@ -172,8 +172,85 @@
       <section id="view-repos" class="view"><header class="section-heading"><div><div class="eyebrow">Data infrastructure</div><h2>Source repositories</h2><p>The dashboard reads the public raw files directly. No separate database or backend is required.</p></div></header><div id="repoGrid" class="repo-grid"></div></section>
 
       <section id="view-thinkscript" class="view">
-        <header class="section-heading"><div><div class="eyebrow">Export</div><h2>ThinkScript Generator</h2><p>Generate static horizontal levels from the latest frame of a selected historical session.</p></div><label><span>Trading date</span><input id="thinkscriptDate" type="date" value="2026-08-20"></label></header>
-        <article class="panel"><div class="generator-toolbar"><button id="generateThinkscript" class="primary-button">Generate levels</button><button id="copyThinkscript" class="ghost-button">Copy code</button><small id="thinkscriptStatus">Uses the selected bucket + Greek.</small></div><textarea id="thinkscriptOutput" spellcheck="false" placeholder="Generated ThinkScript will appear here…"></textarea><div id="thinkscriptError" class="inline-error hidden"></div></article>
+        <header class="section-heading">
+          <div>
+            <div class="eyebrow">Manual export</div>
+            <h2>ThinkScript Generator</h2>
+            <p>
+              Creates one ES-chart ThinkScript from the newest pusherman3000 folder.
+              Each bucket uses its newest timestamp, GEX rows only, with Theo ES as the plotted price.
+            </p>
+          </div>
+        </header>
+
+        <div class="thinkscript-manual-note">
+          Nothing is fetched or regenerated automatically. Data is loaded only when you press
+          <strong>Generate ThinkScript</strong>.
+        </div>
+
+        <div class="thinkscript-summary-grid">
+          <article class="thinkscript-summary-card">
+            <span>Latest folder</span>
+            <strong id="thinkscriptFolder">—</strong>
+          </article>
+          <article class="thinkscript-summary-card">
+            <span>Buckets loaded</span>
+            <strong id="thinkscriptBucketCount">—</strong>
+          </article>
+          <article class="thinkscript-summary-card">
+            <span>GEX levels</span>
+            <strong id="thinkscriptLevelCount">—</strong>
+          </article>
+          <article class="thinkscript-summary-card">
+            <span>Price source</span>
+            <strong>Theo ES</strong>
+          </article>
+        </div>
+
+        <article class="panel thinkscript-source-panel">
+          <div class="panel-header">
+            <div>
+              <div class="panel-kicker">Pusherman3000 validation</div>
+              <h3>Source snapshot</h3>
+            </div>
+            <small>Expected: 10 GEX ranks per bucket</small>
+          </div>
+
+          <div class="thinkscript-table-wrap">
+            <table class="thinkscript-table">
+              <thead>
+                <tr>
+                  <th>Bucket</th>
+                  <th>Newest timestamp</th>
+                  <th>GEX ranks</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="thinkscriptBucketTable">
+                <tr class="thinkscript-placeholder-row">
+                  <td colspan="4">Press Generate ThinkScript to load the latest data.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="panel thinkscript-output-panel">
+          <div class="generator-toolbar">
+            <button id="generateThinkscript" class="primary-button">Generate ThinkScript</button>
+            <button id="copyThinkscript" class="ghost-button" disabled>Copy code</button>
+            <button id="downloadThinkscript" class="ghost-button" disabled>Download .txt</button>
+            <small id="thinkscriptStatus">Ready — manual generation only.</small>
+          </div>
+
+          <textarea
+            id="thinkscriptOutput"
+            spellcheck="false"
+            placeholder="Generated ThinkScript will appear here after you press Generate ThinkScript…"
+          ></textarea>
+
+          <div id="thinkscriptError" class="inline-error hidden"></div>
+        </article>
       </section>
 
       <section id="view-howto" class="view">
@@ -188,5 +265,5 @@
     </div>
   </main>
 </div>
-<script src="config.js?v=0.7.2"></script><script src="app.js?v=0.7.2"></script>
+<script src="config.js?v=1.1.0"></script><script src="app.js?v=1.1.0"></script>
 </body></html>
