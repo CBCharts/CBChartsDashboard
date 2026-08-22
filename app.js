@@ -16,7 +16,11 @@
     frame: 0,
     lastSingleMetric: "volume",
     multiMetrics: ["volume"],
-    graphSize: "standard"
+    graphSize: "standard",
+    spxSpot: null,
+    theoEsBasis: null,
+    latestPushermanFolders: [],
+    latestFolderLookupAt: 0
   };
 
   const plotConfig = {
@@ -256,6 +260,254 @@
     const response = await fetch(url, { cache: "no-store" });
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
     return response.json();
+  }
+
+
+  async function fetchTailText(url, bytes = 65536) {
+    try {
+      const response = await fetch(url, {
+        cache: "no-store",
+        headers: {
+          Range: `bytes=-${bytes}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`${response.status} ${response.statusText}`);
+      }
+
+      return response.text();
+    } catch (_) {
+      // Fallback for browsers/CDNs that do not permit a Range request.
+      return fetchText(url);
+    }
+  }
+
+  function extractSpxSpotFromPlotlyHtml(html) {
+    if (!html) return null;
+
+    // Preferred: find a yellow dashed horizontal Plotly shape.
+    // The BrentBSVisuals files use that shape for SPX spot.
+    const shapePattern =
+      /"line"\s*:\s*\{[\s\S]{0,250}?"color"\s*:\s*"yellow"[\s\S]{0,250}?"dash"\s*:\s*"dash"[\s\S]{0,700}?"y0"\s*:\s*(-?\d+(?:\.\d+)?)[\s\S]{0,220}?"y1"\s*:\s*(-?\d+(?:\.\d+)?)/gi;
+
+    let match;
+
+    while ((match = shapePattern.exec(html)) !== null) {
+      const y0 = Number(match[1]);
+      const y1 = Number(match[2]);
+
+      if (
+        Number.isFinite(y0) &&
+        Number.isFinite(y1) &&
+        Math.abs(y0 - y1) < 1e-9
+      ) {
+        return y0;
+      }
+    }
+
+    // Alternate ordering used by some Plotly serializations.
+    const alternatePattern =
+      /"y0"\s*:\s*(-?\d+(?:\.\d+)?)[\s\S]{0,220}?"y1"\s*:\s*(-?\d+(?:\.\d+)?)[\s\S]{0,700}?"color"\s*:\s*"yellow"[\s\S]{0,250}?"dash"\s*:\s*"dash"/gi;
+
+    while ((match = alternatePattern.exec(html)) !== null) {
+      const y0 = Number(match[1]);
+      const y1 = Number(match[2]);
+
+      if (
+        Number.isFinite(y0) &&
+        Number.isFinite(y1) &&
+        Math.abs(y0 - y1) < 1e-9
+      ) {
+        return y0;
+      }
+    }
+
+    // Final fallback if the HTML includes the spot value in a text annotation.
+    const labeledPatterns = [
+      /SPX Spot Price[^0-9-]*(-?\d+(?:\.\d+)?)/i,
+      /SPX Spot[^0-9-]*(-?\d+(?:\.\d+)?)/i
+    ];
+
+    for (const pattern of labeledPatterns) {
+      const labeled = html.match(pattern);
+      const value = Number(labeled?.[1]);
+
+      if (Number.isFinite(value)) {
+        return value;
+      }
+    }
+
+    return null;
+  }
+
+  function renderSpotPrices() {
+    const spx = Number(state.spxSpot);
+    const basis = Number(state.theoEsBasis?.difference);
+
+    const spxValue = $("spxSpotValue");
+    const spxMeta = $("spxSpotMeta");
+    const theoValue = $("theoEsSpotValue");
+    const theoMeta = $("theoEsSpotMeta");
+
+    if (Number.isFinite(spx)) {
+      spxValue.textContent = formatNumber(spx);
+      spxMeta.textContent = "BrentBSVisuals";
+      $("spxSpotCard").classList.remove("unavailable");
+    } else {
+      spxValue.textContent = "—";
+      spxMeta.textContent = "Spot unavailable";
+      $("spxSpotCard").classList.add("unavailable");
+    }
+
+    if (Number.isFinite(spx) && Number.isFinite(basis)) {
+      const theoSpot = spx + basis;
+      const basisPrefix = basis > 0 ? "+" : "";
+
+      theoValue.textContent = formatNumber(theoSpot);
+      theoMeta.textContent =
+        `Basis ${basisPrefix}${formatNumber(basis)} · ${state.theoEsBasis.folder}`;
+
+      $("theoEsSpotCard").classList.remove("unavailable");
+      $("theoEsSpotCard").title =
+        `SPX ${formatNumber(spx)} + (` +
+        `Theo ES ${formatNumber(state.theoEsBasis.theoES)} - ` +
+        `Strike ${formatNumber(state.theoEsBasis.strikePrice)}) = ` +
+        `${formatNumber(theoSpot)}\n` +
+        `Source: ${state.theoEsBasis.folder} ${C.buckets[state.bucket].label} ` +
+        `${state.theoEsBasis.timestamp || ""}`;
+    } else {
+      theoValue.textContent = "—";
+      theoMeta.textContent = Number.isFinite(spx)
+        ? "Waiting for pusherman3000"
+        : "Waiting for SPX spot";
+
+      $("theoEsSpotCard").classList.add("unavailable");
+      $("theoEsSpotCard").removeAttribute("title");
+    }
+  }
+
+  async function getLatestPushermanFolders(force = false) {
+    const now = Date.now();
+    const cacheAge = now - state.latestFolderLookupAt;
+
+    // Folder discovery only needs occasional refresh. The CSV itself still
+    // refreshes each minute.
+    if (
+      !force &&
+      state.latestPushermanFolders.length &&
+      cacheAge < 15 * 60 * 1000
+    ) {
+      return state.latestPushermanFolders;
+    }
+
+    const url =
+      `https://api.github.com/repos/CBCharts/pusherman3000/contents` +
+      `?ref=main&cb=${Date.now()}`;
+
+    const entries = await fetchJSON(url);
+
+    const folders = entries
+      .filter((entry) =>
+        entry?.type === "dir" &&
+        /^\d{8}$/.test(String(entry.name))
+      )
+      .map((entry) => String(entry.name))
+      .sort((a, b) => b.localeCompare(a));
+
+    if (!folders.length) {
+      throw new Error("No YYYYMMDD folders found in pusherman3000.");
+    }
+
+    state.latestPushermanFolders = folders;
+    state.latestFolderLookupAt = now;
+
+    return folders;
+  }
+
+  function extractLastPushermanRow(csvTail) {
+    const lines = String(csvTail || "")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    // Walk backward so a partial first line from a Range response does not matter.
+    for (let index = lines.length - 1; index >= 0; index--) {
+      const line = lines[index];
+
+      if (/^timestamp\s*,/i.test(line)) continue;
+
+      const parsed = Papa.parse(line, {
+        header: false,
+        dynamicTyping: true,
+        skipEmptyLines: true
+      });
+
+      const row = parsed.data?.[0];
+
+      if (!Array.isArray(row) || row.length < 3) continue;
+
+      const strikePrice = Number(row[1]);
+      const theoES = Number(row[2]);
+
+      if (
+        !Number.isFinite(strikePrice) ||
+        !Number.isFinite(theoES)
+      ) {
+        continue;
+      }
+
+      return {
+        timestamp: row[0] != null ? String(row[0]) : "",
+        strikePrice,
+        theoES
+      };
+    }
+
+    return null;
+  }
+
+  async function loadTheoEsBasis() {
+    try {
+      const folders = await getLatestPushermanFolders();
+      const fileName = C.buckets[state.bucket].pusherman;
+
+      let lastError = null;
+
+      // Normally the first folder is all we need. Trying a few recent folders
+      // also handles the brief period when a new trading-date folder exists
+      // before every expiration bucket has been written.
+      for (const folder of folders.slice(0, 5)) {
+        const path = `${folder}/brent_bs/${fileName}`;
+        const url = raw("pusherman3000", path);
+
+        try {
+          const tail = await fetchTailText(url);
+          const row = extractLastPushermanRow(tail);
+
+          if (!row) {
+            throw new Error("No valid final row.");
+          }
+
+          state.theoEsBasis = {
+            ...row,
+            folder,
+            difference: row.theoES - row.strikePrice
+          };
+
+          renderSpotPrices();
+          return;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+
+      throw lastError || new Error("No recent bucket CSV could be read.");
+    } catch (error) {
+      state.theoEsBasis = null;
+      renderSpotPrices();
+      console.warn("Theo ES spot basis unavailable:", error);
+    }
   }
 
   function parseCSV(text) {
@@ -1011,6 +1263,17 @@
 
     try {
       const rawHtml = await fetchText(raw("BrentBSVisuals", file));
+
+      const extractedSpxSpot = extractSpxSpotFromPlotlyHtml(rawHtml);
+
+      if (Number.isFinite(extractedSpxSpot)) {
+        state.spxSpot = extractedSpxSpot;
+      } else {
+        state.spxSpot = null;
+      }
+
+      renderSpotPrices();
+
       const responsiveHtml = makeEmbeddedPlotlyResponsive(rawHtml);
 
       $("visualFrame").onload = () => {
@@ -1025,6 +1288,9 @@
 
       $("visualFrame").srcdoc = responsiveHtml;
     } catch (error) {
+      state.spxSpot = null;
+      renderSpotPrices();
+
       $("visualLoading").classList.add("hidden");
       showError(
         "visualError",
@@ -1373,7 +1639,14 @@
   }
 
   async function refreshLive() {
-    await Promise.allSettled([loadGauges(), loadVoltra(), loadVisual()]);
+    await Promise.allSettled([
+      loadGauges(),
+      loadVoltra(),
+      loadVisual(),
+      loadTheoEsBasis()
+    ]);
+
+    renderSpotPrices();
   }
 
   async function focusChanged() {
@@ -1386,7 +1659,9 @@
       });
     }
 
-    if (state.view === "snapshot") await loadVisual();
+    // SPX is extracted from the currently selected BrentBSVisuals HTML.
+    await loadVisual();
+
     if (state.view === "timelapse") await loadHistory();
   }
 
@@ -1398,7 +1673,12 @@
     $("bucketSelect").addEventListener("change", async (event) => {
       state.bucket = event.target.value;
       state.history = null;
+      state.spxSpot = null;
+      state.theoEsBasis = null;
+      renderSpotPrices();
+
       await refreshLive();
+
       if (state.view === "timelapse") await loadHistory();
     });
 
@@ -1471,6 +1751,7 @@
     renderRepos();
     wireEvents();
     applyGraphSize(state.graphSize, false);
+    renderSpotPrices();
     setConnection(null, "Connecting");
 
     await refreshLive();
@@ -1478,7 +1759,12 @@
     setInterval(() => {
       loadGauges();
       loadVoltra();
-      if (state.view === "snapshot") loadVisual();
+      loadTheoEsBasis();
+
+      // SPX lives inside the Plotly HTML, so refresh that HTML each minute
+      // even when another left-nav view is open. The iframe is only visible
+      // on Snapshot, but the top spot cards remain current everywhere.
+      loadVisual();
     }, C.refreshMs);
   }
 

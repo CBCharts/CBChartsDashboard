@@ -612,6 +612,22 @@ input[type="date"] {
 }
 
 @media (max-width: 900px) {
+  .overview-title-block {
+    width: 100%;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .spot-price-strip {
+    width: 100%;
+  }
+
+  .spot-price-card {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
   .snapshot-metric-control {
     align-items: stretch;
     flex-direction: column;
@@ -643,6 +659,18 @@ input[type="date"] {
 }
 
 @media (max-width: 620px) {
+  .spot-price-strip {
+    gap: 6px;
+  }
+
+  .spot-price-card {
+    padding: 7px 8px;
+  }
+
+  .spot-price-value {
+    font-size: 15px;
+  }
+
   :root { --sidebar: 0px; }
   .sidebar {
     position: static;

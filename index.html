@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#080d14">
   <title>CBCharts Market Dashboard</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=0.5.0">
+  <link rel="stylesheet" href="styles.css?v=0.6.0">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 </head>
@@ -27,7 +27,24 @@
   <main class="main-pane">
     <section class="market-overview">
       <div class="overview-toolbar">
-        <div><div class="eyebrow">Live market overview</div><h1 id="pageTitle">Snapshot</h1></div>
+        <div class="overview-title-block">
+          <div><div class="eyebrow">Live market overview</div><h1 id="pageTitle">Snapshot</h1></div>
+
+          <div class="spot-price-strip" aria-label="Spot prices">
+            <article id="spxSpotCard" class="spot-price-card unavailable">
+              <div class="spot-price-label">SPX SPOT</div>
+              <div id="spxSpotValue" class="spot-price-value">—</div>
+              <div id="spxSpotMeta" class="spot-price-meta">Loading…</div>
+            </article>
+
+            <article id="theoEsSpotCard" class="spot-price-card theo unavailable">
+              <div class="spot-price-label">THEO ES SPOT</div>
+              <div id="theoEsSpotValue" class="spot-price-value">—</div>
+              <div id="theoEsSpotMeta" class="spot-price-meta">Loading…</div>
+            </article>
+          </div>
+        </div>
+
         <div class="toolbar-controls">
           <label><span>Expiration bucket</span><select id="bucketSelect"></select></label>
           <label><span>Focus Greek</span><select id="greekSelect"><option>GEX</option><option>CEX</option><option>DEX</option><option>VEX</option></select></label>
@@ -116,5 +133,5 @@
     </div>
   </main>
 </div>
-<script src="config.js?v=0.5.0"></script><script src="app.js?v=0.5.0"></script>
+<script src="config.js?v=0.6.0"></script><script src="app.js?v=0.6.0"></script>
 </body></html>
