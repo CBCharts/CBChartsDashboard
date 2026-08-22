@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#080d14">
   <title>CBCharts Market Dashboard</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=1.2.0">
+  <link rel="stylesheet" href="styles.css?v=1.3.0">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 </head>
@@ -18,7 +18,7 @@
       <button class="nav-item active" data-view="snapshot"><span>◫</span><b>Snapshot</b></button>
       <button class="nav-item" data-view="timelapse"><span>▶</span><b>Timelapse</b></button>
       <button class="nav-item" data-view="repos"><span>⌘</span><b>Repo's</b></button>
-      <button class="nav-item" data-view="pinescript"><span>ƒ</span><b>Pine Script Generator</b></button>
+      <button class="nav-item" data-view="pinescript"><span>ƒ</span><b>Script Generator</b></button>
       <button class="nav-item" data-view="howto"><span>?</span><b>How-To</b></button>
     </nav>
     <div class="sidebar-footer"><div class="status-row"><i id="connectionDot"></i><span id="connectionText">Connecting</span></div><small id="lastRefresh">Waiting for data…</small></div>
@@ -175,17 +175,18 @@
         <header class="section-heading">
           <div>
             <div class="eyebrow">Manual export</div>
-            <h2>Pine Script Generator</h2>
+            <h2>Pine Script / ThinkScript Generator</h2>
             <p>
-              Creates one TradingView Pine Script v6 for ES charts from the newest pusherman3000 folder.
-              Each bucket uses its newest timestamp, GEX rows only, with Theo ES as the plotted price.
+              Creates GEX level scripts for TradingView or Thinkorswim from the newest pusherman3000 folder.
+              Each bucket uses its newest timestamp, GEX rows only, with Theo ES as the plotted ES price.
             </p>
           </div>
         </header>
 
         <div class="pinescript-manual-note">
-          Nothing is fetched or regenerated automatically. Data is loaded only when you press
-          <strong>Generate Pine Script</strong>.
+          Nothing is fetched or regenerated automatically. Choose
+          <strong>Generate Pine Script</strong> or <strong>Generate ThinkScript</strong>.
+          Generating one platform replaces the previously displayed code.
         </div>
 
         <div class="pinescript-summary-grid">
@@ -203,7 +204,7 @@
           </article>
           <article class="pinescript-summary-card">
             <span>Platform / price</span>
-            <strong>TradingView · Theo ES</strong>
+            <strong id="scriptPlatformValue">Choose below · Theo ES</strong>
           </article>
         </div>
 
@@ -228,7 +229,7 @@
               </thead>
               <tbody id="pinescriptBucketTable">
                 <tr class="pinescript-placeholder-row">
-                  <td colspan="4">Press Generate Pine Script to load the latest data.</td>
+                  <td colspan="4">Choose a script type below to load the latest data.</td>
                 </tr>
               </tbody>
             </table>
@@ -236,17 +237,40 @@
         </article>
 
         <article class="panel pinescript-output-panel">
-          <div class="generator-toolbar">
-            <button id="generatePinescript" class="primary-button">Generate Pine Script</button>
-            <button id="copyPinescript" class="ghost-button" disabled>Copy code</button>
-            <button id="downloadPinescript" class="ghost-button" disabled>Download .pine</button>
-            <small id="pinescriptStatus">Ready — manual generation only.</small>
+          <div class="generator-toolbar dual-generator-toolbar">
+            <div class="generator-platform-actions">
+              <button
+                id="generatePinescript"
+                class="primary-button generator-platform-button"
+                data-script-type="pinescript"
+              >
+                Generate Pine Script
+              </button>
+
+              <button
+                id="generateThinkscript"
+                class="ghost-button generator-platform-button"
+                data-script-type="thinkscript"
+              >
+                Generate ThinkScript
+              </button>
+            </div>
+
+            <div class="generator-output-actions">
+              <button id="copyGeneratedScript" class="ghost-button" disabled>Copy code</button>
+              <button id="downloadGeneratedScript" class="ghost-button" disabled>Download</button>
+            </div>
+
+            <div class="generator-status-row">
+              <span id="generatedScriptBadge" class="generated-script-badge">No script generated</span>
+              <small id="pinescriptStatus">Ready — manual generation only.</small>
+            </div>
           </div>
 
           <textarea
             id="pinescriptOutput"
             spellcheck="false"
-            placeholder="Generated TradingView Pine Script v6 will appear here after you press Generate Pine Script…"
+            placeholder="Choose Generate Pine Script or Generate ThinkScript. Only the selected script will appear here."
           ></textarea>
 
           <div id="pinescriptError" class="inline-error hidden"></div>
@@ -265,5 +289,5 @@
     </div>
   </main>
 </div>
-<script src="config.js?v=1.2.0"></script><script src="app.js?v=1.2.0"></script>
+<script src="config.js?v=1.3.0"></script><script src="app.js?v=1.3.0"></script>
 </body></html>

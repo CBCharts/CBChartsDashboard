@@ -856,6 +856,54 @@ input[type="date"] {
   border-bottom: 1px solid rgba(255,255,255,.07);
 }
 
+.dual-generator-toolbar {
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.generator-platform-actions,
+.generator-output-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.generator-status-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 220px;
+  margin-left: auto;
+}
+
+.generated-script-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 25px;
+  padding: 0 8px;
+  border: 1px solid #2b3d52;
+  border-radius: 999px;
+  background: #0c151f;
+  color: #91a5ba;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.generator-platform-button.active-platform {
+  border-color: #4b9cec;
+  box-shadow: inset 0 0 0 1px rgba(75,156,236,.22);
+}
+
+#generateThinkscript.active-platform {
+  background: rgba(244,199,94,.12);
+  border-color: rgba(244,199,94,.48);
+  color: #f4d47e;
+}
+
 .generator-toolbar small { margin-left: auto; }
 
 #pinescriptOutput {
@@ -948,6 +996,22 @@ input[type="date"] {
   .generator-toolbar small {
     flex: 1 1 100%;
     margin-left: 0;
+  }
+
+  .generator-platform-actions,
+  .generator-output-actions,
+  .generator-status-row {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .generator-platform-actions button,
+  .generator-output-actions button {
+    flex: 1 1 140px;
+  }
+
+  .generator-status-row {
+    flex-wrap: wrap;
   }
 
   .spot-price-strip {

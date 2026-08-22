@@ -19,6 +19,8 @@
     graphSize: "standard",
     timelapseMode: "levels",
     playbackSpeed: 1,
+    generatedScriptType: null,
+    generatedScriptFolder: null,
     spxSpot: null,
     theoEsBasis: null,
     latestPushermanFolders: [],
@@ -2113,7 +2115,87 @@
     return lines.join("\n");
   }
 
-  function validatePinescriptSnapshot(snapshot) {
+  const THINKSCRIPT_BUCKETS = [
+    {
+      key: "0dte",
+      label: "0DTE",
+      prefix: "d0",
+      showInput: "show0DTE",
+      colorName: "Bucket0DTE",
+      color: [207, 238, 219]
+    },
+    {
+      key: "1dte",
+      label: "1DTE",
+      prefix: "d1",
+      showInput: "show1DTE",
+      colorName: "Bucket1DTE",
+      color: [255, 246, 201]
+    },
+    {
+      key: "EoW",
+      label: "EoW",
+      prefix: "eow",
+      showInput: "showEOW",
+      colorName: "BucketEOW",
+      color: [255, 167, 38]
+    },
+    {
+      key: "EoM",
+      label: "EoM",
+      prefix: "eom",
+      showInput: "showEOM",
+      colorName: "BucketEOM",
+      color: [255, 82, 82]
+    },
+    {
+      key: "nex_EoW",
+      label: "Next Week",
+      prefix: "nw",
+      showInput: "showNextWeek",
+      colorName: "BucketNextWeek",
+      color: [255, 246, 201]
+    },
+    {
+      key: "nex_EoM",
+      label: "Next Month",
+      prefix: "nm",
+      showInput: "showNextMonth",
+      colorName: "BucketNextMonth",
+      color: [255, 183, 77]
+    },
+    {
+      key: "Full",
+      label: "Full",
+      prefix: "full",
+      showInput: "showFull",
+      colorName: "BucketFull",
+      color: [161, 39, 42]
+    }
+  ];
+
+  const THINKSCRIPT_RANKS = [
+    { rank: "Call GEX 1", suffix: "c1", showInput: "showCallGEX1", colorName: "Call1", color: [139, 30, 44] },
+    { rank: "Call GEX 2", suffix: "c2", showInput: "showCallGEX2", colorName: "Call2", color: [178, 34, 52] },
+    { rank: "Call GEX 3", suffix: "c3", showInput: "showCallGEX3", colorName: "Call3", color: [224, 85, 98] },
+    { rank: "Call GEX 4", suffix: "c4", showInput: "showCallGEX4", colorName: "Call4", color: [242, 138, 147] },
+    { rank: "Call GEX 5", suffix: "c5", showInput: "showCallGEX5", colorName: "Call5", color: [248, 184, 190] },
+    { rank: "Put GEX 1", suffix: "p1", showInput: "showPutGEX1", colorName: "Put1", color: [14, 64, 46] },
+    { rank: "Put GEX 2", suffix: "p2", showInput: "showPutGEX2", colorName: "Put2", color: [30, 111, 58] },
+    { rank: "Put GEX 3", suffix: "p3", showInput: "showPutGEX3", colorName: "Put3", color: [46, 139, 87] },
+    { rank: "Put GEX 4", suffix: "p4", showInput: "showPutGEX4", colorName: "Put4", color: [126, 207, 138] },
+    { rank: "Put GEX 5", suffix: "p5", showInput: "showPutGEX5", colorName: "Put5", color: [207, 238, 214] }
+  ];
+
+  const THINKSCRIPT_BUCKET_MAP = new Map(
+    THINKSCRIPT_BUCKETS.map((item) => [item.key, item])
+  );
+
+  const THINKSCRIPT_RANK_MAP = new Map(
+    THINKSCRIPT_RANKS.map((item) => [item.rank, item])
+  );
+
+  function validateGeneratorSnapshot(snapshot) {
     const problems = [];
 
     for (const bucket of PINESCRIPT_BUCKETS) {
@@ -2144,8 +2226,12 @@
     return problems;
   }
 
+  function validatePinescriptSnapshot(snapshot) {
+    return validateGeneratorSnapshot(snapshot);
+  }
+
   function buildPinescriptSource(snapshot) {
-    const problems = validatePinescriptSnapshot(snapshot);
+    const problems = validateGeneratorSnapshot(snapshot);
 
     if (problems.length) {
       throw new Error(
@@ -2160,6 +2246,304 @@
     return PINE_SCRIPT_TEMPLATE
       .replace("{generation_date}", generationDate)
       .replace("{gex_data_block}", dataBlock);
+  }
+
+  function thinkscriptNumber(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number.toFixed(2) : "0.00";
+  }
+
+  function thinkscriptSafeText(value) {
+    return String(value ?? "")
+      .replaceAll("\\", "\\\\")
+      .replaceAll('"', '\\"');
+  }
+
+  function enrichThinkscriptLevels(snapshot) {
+    return snapshot.levels.map((level) => {
+      const bucketMeta = THINKSCRIPT_BUCKET_MAP.get(level.bucketKey);
+      const rankMeta = THINKSCRIPT_RANK_MAP.get(level.rank);
+
+      if (!bucketMeta || !rankMeta) {
+        throw new Error(
+          `ThinkScript mapping is missing for ${level.bucketLabel} / ${level.rank}.`
+        );
+      }
+
+      return {
+        ...level,
+        tsBucketPrefix: bucketMeta.prefix,
+        tsBucketShowInput: bucketMeta.showInput,
+        tsBucketColorName: bucketMeta.colorName,
+        tsRankSuffix: rankMeta.suffix,
+        tsRankShowInput: rankMeta.showInput,
+        tsRankColorName: rankMeta.colorName
+      };
+    });
+  }
+
+  function groupThinkscriptLevelsByPrice(levels) {
+    const groups = new Map();
+
+    levels.forEach((level) => {
+      const price = thinkscriptNumber(level.theoES);
+
+      if (!groups.has(price)) {
+        groups.set(price, []);
+      }
+
+      groups.get(price).push({
+        ...level,
+        generatedPrice: price
+      });
+    });
+
+    return [...groups.entries()]
+      .map(([price, members]) => {
+        // Same ownership rule that was tested successfully in v1.1:
+        // the highest absolute GEX Value owns the horizontal line.
+        const ownerOrder = [...members].sort(
+          (a, b) => Math.abs(b.value) - Math.abs(a.value)
+        );
+
+        // Labels sharing a Theo ES level are stacked by descending raw Value.
+        const labelOrder = [...members].sort(
+          (a, b) => b.value - a.value
+        );
+
+        const labelOffset = new Map(
+          labelOrder.map((level, index) => [
+            `${level.tsBucketPrefix}_${level.tsRankSuffix}`,
+            index + 1
+          ])
+        );
+
+        return {
+          price,
+          members,
+          ownerOrder,
+          labelOffset
+        };
+      })
+      .sort((a, b) => Number(a.price) - Number(b.price));
+  }
+
+  function buildThinkscriptSource(snapshot) {
+    const problems = validateGeneratorSnapshot(snapshot);
+
+    if (problems.length) {
+      throw new Error(
+        "ThinkScript was not created because the latest snapshot is incomplete: " +
+        problems.join(" | ")
+      );
+    }
+
+    const levels = enrichThinkscriptLevels(snapshot);
+    const groups = groupThinkscriptLevelsByPrice(levels);
+    const output = [];
+
+    output.push(
+      "# ================================================================",
+      "# CBCharts GEX Levels for ES",
+      `# Pusherman folder: ${snapshot.folder}`,
+      "# Source rule: newest timestamp per bucket, Greek == GEX",
+      "# Price used on ES chart: Theo ES",
+      "# Platform: Thinkorswim / ThinkScript",
+      "# Generated manually from CBChartsDashboard",
+      `# Generated: ${new Date().toLocaleString()}`,
+      "# ================================================================",
+      "",
+      "declare upper;",
+      "",
+      "# -------------------------------",
+      "# DISPLAY INPUTS",
+      "# -------------------------------",
+      "input showLabels = yes;",
+      "input labelOffsetTicks = 4;",
+      "input showHeaderLabel = yes;",
+      ""
+    );
+
+    THINKSCRIPT_BUCKETS.forEach((bucket) => {
+      output.push(`input ${bucket.showInput} = yes;`);
+    });
+
+    output.push("");
+
+    THINKSCRIPT_RANKS.forEach((rank) => {
+      output.push(`input ${rank.showInput} = yes;`);
+    });
+
+    output.push(
+      "",
+      "# -------------------------------",
+      "# GLOBAL COLORS",
+      "# -------------------------------"
+    );
+
+    THINKSCRIPT_RANKS.forEach((rank) => {
+      output.push(
+        `DefineGlobalColor("${rank.colorName}", CreateColor(${rank.color.join(", ")}));`
+      );
+    });
+
+    output.push("");
+
+    THINKSCRIPT_BUCKETS.forEach((bucket) => {
+      output.push(
+        `DefineGlobalColor("${bucket.colorName}", CreateColor(${bucket.color.join(", ")}));`
+      );
+    });
+
+    output.push(
+      "",
+      "# -------------------------------",
+      "# SNAPSHOT METADATA",
+      "# -------------------------------",
+      `AddLabel(showHeaderLabel, "CBCharts GEX | ${snapshot.folder}", Color.LIGHT_GRAY);`
+    );
+
+    snapshot.bucketResults.forEach((result) => {
+      if (!result.ok) return;
+
+      const bucketMeta = THINKSCRIPT_BUCKET_MAP.get(result.bucket.key);
+
+      output.push(
+        `AddLabel(showHeaderLabel and ${bucketMeta.showInput}, ` +
+        `"${thinkscriptSafeText(bucketMeta.label)} | ${thinkscriptSafeText(result.data.timestamp)}", ` +
+        `GlobalColor("${bucketMeta.colorName}"));`
+      );
+    });
+
+    output.push(
+      "",
+      "# -------------------------------",
+      "# HARDCODED GEX DATA",
+      "# -------------------------------",
+      "def cbLastBar = !IsNaN(close) and IsNaN(close[-1]);",
+      "def cbLabelStep = labelOffsetTicks * TickSize();",
+      ""
+    );
+
+    levels.forEach((level) => {
+      const id = `${level.tsBucketPrefix}_${level.tsRankSuffix}`;
+
+      output.push(
+        `# ${level.bucketLabel} | ${level.rank} | ${level.timestamp}`,
+        `def px_${id} = ${thinkscriptNumber(level.theoES)};`,
+        `def val_${id} = ${thinkscriptNumber(level.value)};`,
+        `def vis_${id} = ${level.tsBucketShowInput} and ${level.tsRankShowInput};`,
+        ""
+      );
+    });
+
+    output.push(
+      "# -------------------------------",
+      "# PRICE-DEDUPED HORIZONTAL LEVELS",
+      "# -------------------------------"
+    );
+
+    groups.forEach((group, index) => {
+      const plotName = `GEX_Level_${String(index + 1).padStart(3, "0")}`;
+
+      const visibility = group.ownerOrder
+        .map((level) =>
+          `vis_${level.tsBucketPrefix}_${level.tsRankSuffix}`
+        )
+        .join(" or ");
+
+      const colorExpression = group.ownerOrder
+        .map((level) =>
+          `if vis_${level.tsBucketPrefix}_${level.tsRankSuffix} ` +
+          `then GlobalColor("${level.tsRankColorName}")`
+        )
+        .join(" else ");
+
+      output.push(
+        `# Theo ES ${group.price} | ${group.members.length} source level${group.members.length === 1 ? "" : "s"}`,
+        `plot ${plotName} = if ${visibility} then ${group.price} else Double.NaN;`,
+        `${plotName}.SetPaintingStrategy(PaintingStrategy.HORIZONTAL);`,
+        `${plotName}.SetLineWeight(2);`,
+        `${plotName}.SetDefaultColor(Color.GRAY);`,
+        `${plotName}.AssignValueColor(${colorExpression} else Color.GRAY);`,
+        `${plotName}.HideTitle();`,
+        `${plotName}.HideBubble();`,
+        ""
+      );
+    });
+
+    output.push(
+      "# -------------------------------",
+      "# LEVEL LABELS",
+      "# -------------------------------"
+    );
+
+    groups.forEach((group) => {
+      group.members.forEach((level) => {
+        const id = `${level.tsBucketPrefix}_${level.tsRankSuffix}`;
+        const offset = group.labelOffset.get(id) || 1;
+        const labelText =
+          `${thinkscriptSafeText(level.bucketLabel)} | ` +
+          `${thinkscriptSafeText(level.rank)}`;
+
+        output.push(
+          "AddChartBubble(",
+          `    showLabels and cbLastBar and vis_${id},`,
+          `    px_${id} - (${offset} * cbLabelStep),`,
+          `    "${labelText}",`,
+          `    GlobalColor("${level.tsBucketColorName}"),`,
+          "    no",
+          ");"
+        );
+      });
+    });
+
+    output.push(
+      "",
+      "# ================================================================",
+      "# END CBCharts GENERATED GEX LEVELS",
+      "# ================================================================"
+    );
+
+    return output.join("\n");
+  }
+
+  function clearGeneratorDisplay(scriptType) {
+    clearError("pinescriptError");
+
+    state.generatedScriptType = null;
+    state.generatedScriptFolder = null;
+
+    $("pinescriptOutput").value = "";
+    $("copyGeneratedScript").disabled = true;
+    $("downloadGeneratedScript").disabled = true;
+
+    $("pinescriptFolder").textContent = "—";
+    $("pinescriptBucketCount").textContent = "—";
+    $("pinescriptLevelCount").textContent = "—";
+
+    $("scriptPlatformValue").textContent =
+      scriptType === "thinkscript"
+        ? "Thinkorswim · Theo ES"
+        : "TradingView · Theo ES";
+
+    $("generatedScriptBadge").textContent =
+      scriptType === "thinkscript"
+        ? "Generating ThinkScript…"
+        : "Generating Pine Script…";
+
+    $("pinescriptBucketTable").innerHTML = `
+      <tr class="pinescript-placeholder-row">
+        <td colspan="4">Loading the latest Pusherman3000 snapshot…</td>
+      </tr>
+    `;
+
+    document.querySelectorAll(".generator-platform-button").forEach((button) => {
+      button.classList.toggle(
+        "active-platform",
+        button.dataset.scriptType === scriptType
+      );
+    });
   }
 
   function renderPinescriptSnapshot(snapshot) {
@@ -2178,7 +2562,7 @@
     if (!snapshot?.bucketResults?.length) {
       table.innerHTML = `
         <tr class="pinescript-placeholder-row">
-          <td colspan="4">Press Generate Pine Script to load the latest data.</td>
+          <td colspan="4">Choose a script type above to load the latest data.</td>
         </tr>
       `;
       return;
@@ -2212,7 +2596,7 @@
     }).join("");
   }
 
-  async function fetchPinescriptSnapshot() {
+  async function fetchGeneratorSnapshot() {
     const folders = await getLatestPushermanFolders(true);
     const folder = folders[0];
 
@@ -2240,8 +2624,8 @@
         const path = `${folder}/brent_bs/${fileName}`;
 
         try {
-          // Manual generation favors correctness over bandwidth:
-          // load the full CSV, find its newest timestamp, then keep GEX only.
+          // Still manual only. Favor correctness over bandwidth:
+          // load the full file, find its newest timestamp, then keep GEX.
           const text = await fetchText(raw("pusherman3000", path));
           const rows = parseCSV(text);
           const data = normalizePinescriptBucket(rows, bucket);
@@ -2274,57 +2658,88 @@
     };
   }
 
-  async function generatePinescript() {
-    clearError("pinescriptError");
-
-    const button = $("generatePinescript");
+  async function generateScript(scriptType) {
+    const isThinkscript = scriptType === "thinkscript";
+    const pineButton = $("generatePinescript");
+    const thinkButton = $("generateThinkscript");
     let snapshot = null;
 
-    button.disabled = true;
-    button.textContent = "Generating…";
-    $("copyPinescript").disabled = true;
-    $("downloadPinescript").disabled = true;
+    clearGeneratorDisplay(scriptType);
+
+    pineButton.disabled = true;
+    thinkButton.disabled = true;
+
+    if (isThinkscript) {
+      thinkButton.textContent = "Generating…";
+    } else {
+      pineButton.textContent = "Generating…";
+    }
+
     $("pinescriptStatus").textContent =
       "Finding latest pusherman3000 folder…";
 
     try {
-      snapshot = await fetchPinescriptSnapshot();
+      snapshot = await fetchGeneratorSnapshot();
       renderPinescriptSnapshot(snapshot);
 
-      const source = buildPinescriptSource(snapshot);
+      const source = isThinkscript
+        ? buildThinkscriptSource(snapshot)
+        : buildPinescriptSource(snapshot);
 
+      // One shared output area. Generating either platform replaces the
+      // previously displayed script, so only the selected script is visible.
       $("pinescriptOutput").value = source;
 
-      $("pinescriptStatus").textContent =
-        `Generated TradingView Pine v6 from ${snapshot.folder} · ` +
-        `${snapshot.levels.length} GEX levels`;
+      state.generatedScriptType =
+        isThinkscript ? "thinkscript" : "pinescript";
+      state.generatedScriptFolder = snapshot.folder;
 
-      $("copyPinescript").disabled = false;
-      $("downloadPinescript").disabled = false;
-      $("downloadPinescript").dataset.folder = snapshot.folder;
+      $("generatedScriptBadge").textContent =
+        isThinkscript
+          ? "Thinkorswim · ThinkScript"
+          : "TradingView · Pine Script v6";
+
+      $("pinescriptStatus").textContent =
+        `Generated ${isThinkscript ? "ThinkScript" : "Pine Script v6"} ` +
+        `from ${snapshot.folder} · ${snapshot.levels.length} GEX levels`;
+
+      $("copyGeneratedScript").disabled = false;
+      $("downloadGeneratedScript").disabled = false;
+
+      $("downloadGeneratedScript").textContent =
+        isThinkscript ? "Download .txt" : "Download .pine";
     } catch (error) {
       $("pinescriptOutput").value = "";
+      state.generatedScriptType = null;
+      state.generatedScriptFolder = null;
 
       if (!snapshot) {
         renderPinescriptSnapshot(null);
       }
 
+      $("generatedScriptBadge").textContent = "Generation failed";
       $("pinescriptStatus").textContent = "Generation failed";
+
       showError(
         "pinescriptError",
-        `Could not generate Pine Script: ${error.message}`
+        `Could not generate ${isThinkscript ? "ThinkScript" : "Pine Script"}: ${error.message}`
       );
     } finally {
-      button.disabled = false;
-      button.textContent = "Generate Pine Script";
+      pineButton.disabled = false;
+      thinkButton.disabled = false;
+      pineButton.textContent = "Generate Pine Script";
+      thinkButton.textContent = "Generate ThinkScript";
     }
   }
 
-  function downloadPinescript() {
+  function downloadGeneratedScript() {
     const text = $("pinescriptOutput").value;
-    if (!text) return;
+    if (!text || !state.generatedScriptType) return;
 
-    const folder = $("downloadPinescript").dataset.folder || "latest";
+    const folder = state.generatedScriptFolder || "latest";
+    const isThinkscript = state.generatedScriptType === "thinkscript";
+    const extension = isThinkscript ? "txt" : "pine";
+    const platform = isThinkscript ? "Thinkorswim" : "TradingView";
 
     const blob = new Blob([text], {
       type: "text/plain;charset=utf-8"
@@ -2334,7 +2749,8 @@
     const anchor = document.createElement("a");
 
     anchor.href = url;
-    anchor.download = `CBCharts_GEX_ES_${folder}.pine`;
+    anchor.download =
+      `CBCharts_GEX_ES_${platform}_${folder}.${extension}`;
 
     document.body.appendChild(anchor);
     anchor.click();
@@ -2364,7 +2780,7 @@
       snapshot: "Snapshot",
       timelapse: "Timelapse",
       repos: "Repo's",
-      pinescript: "Pine Script Generator",
+      pinescript: "Script Generator",
       howto: "How-To"
     }[view];
 
@@ -2475,20 +2891,30 @@
       updateFrame(0);
     });
 
-    $("generatePinescript").addEventListener("click", generatePinescript);
+    $("generatePinescript").addEventListener("click", () => {
+      generateScript("pinescript");
+    });
 
-    $("copyPinescript").addEventListener("click", async () => {
+    $("generateThinkscript").addEventListener("click", () => {
+      generateScript("thinkscript");
+    });
+
+    $("copyGeneratedScript").addEventListener("click", async () => {
       const text = $("pinescriptOutput").value;
       if (!text) return;
 
       await navigator.clipboard.writeText(text);
-      $("copyPinescript").textContent = "Copied";
+      $("copyGeneratedScript").textContent = "Copied";
+
       setTimeout(() => {
-        $("copyPinescript").textContent = "Copy code";
+        $("copyGeneratedScript").textContent = "Copy code";
       }, 1000);
     });
 
-    $("downloadPinescript").addEventListener("click", downloadPinescript);
+    $("downloadGeneratedScript").addEventListener(
+      "click",
+      downloadGeneratedScript
+    );
   }
 
   async function init() {
