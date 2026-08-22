@@ -352,35 +352,43 @@
 
     if (Number.isFinite(spx)) {
       spxValue.textContent = formatNumber(spx);
-      spxMeta.textContent = "BrentBSVisuals";
+
+      // v0.6.1: keep the SPX card minimal — label + value only.
+      spxMeta.textContent = "";
+      spxMeta.classList.add("hidden");
+
       $("spxSpotCard").classList.remove("unavailable");
     } else {
       spxValue.textContent = "—";
-      spxMeta.textContent = "Spot unavailable";
+      spxMeta.textContent = "";
+      spxMeta.classList.add("hidden");
+
       $("spxSpotCard").classList.add("unavailable");
     }
 
     if (Number.isFinite(spx) && Number.isFinite(basis)) {
       const theoSpot = spx + basis;
-      const basisPrefix = basis > 0 ? "+" : "";
 
       theoValue.textContent = formatNumber(theoSpot);
-      theoMeta.textContent =
-        `Basis ${basisPrefix}${formatNumber(basis)} · ${state.theoEsBasis.folder}`;
+
+      // Keep the YYYYMMDD folder date and append only the time from the
+      // last pusherman row, e.g. "20260820 · 12:58:27".
+      const rawTimestamp = String(state.theoEsBasis.timestamp || "").trim();
+      const timeMatch = rawTimestamp.match(/(\d{2}:\d{2}:\d{2}(?:\.\d+)?)/);
+      const timeText = timeMatch ? timeMatch[1] : "";
+
+      theoMeta.textContent = timeText
+        ? `${state.theoEsBasis.folder} · ${timeText}`
+        : state.theoEsBasis.folder;
+
+      theoMeta.classList.remove("hidden");
 
       $("theoEsSpotCard").classList.remove("unavailable");
-      $("theoEsSpotCard").title =
-        `SPX ${formatNumber(spx)} + (` +
-        `Theo ES ${formatNumber(state.theoEsBasis.theoES)} - ` +
-        `Strike ${formatNumber(state.theoEsBasis.strikePrice)}) = ` +
-        `${formatNumber(theoSpot)}\n` +
-        `Source: ${state.theoEsBasis.folder} ${C.buckets[state.bucket].label} ` +
-        `${state.theoEsBasis.timestamp || ""}`;
+      $("theoEsSpotCard").removeAttribute("title");
     } else {
       theoValue.textContent = "—";
-      theoMeta.textContent = Number.isFinite(spx)
-        ? "Waiting for pusherman3000"
-        : "Waiting for SPX spot";
+      theoMeta.textContent = state.theoEsBasis?.folder || "";
+      theoMeta.classList.toggle("hidden", !theoMeta.textContent);
 
       $("theoEsSpotCard").classList.add("unavailable");
       $("theoEsSpotCard").removeAttribute("title");
