@@ -64,7 +64,7 @@
   };
 
   function graphScale() {
-    return GRAPH_SIZES[state.graphSize] || GRAPH_SIZES.compact;
+    return GRAPH_SIZES[state.graphSize] || GRAPH_SIZES.large;
   }
 
   function setElementGraphHeight(id, baseHeight) {
@@ -141,7 +141,7 @@
 
     if (persist) {
       try {
-        localStorage.setItem("cbcharts-graph-size-v1.5", state.graphSize);
+        localStorage.setItem("cbcharts-graph-size-v1.5.1", state.graphSize);
       } catch (_) {}
     }
 
@@ -166,10 +166,10 @@
   }
 
   function loadStoredGraphSize() {
-    // v1.5 intentionally uses a fresh storage key so Compact becomes the
-    // default even for browsers that previously saved Standard.
+    // v1.5.1 intentionally uses a fresh storage key so Large becomes the
+    // default even for browsers that previously saved Compact or Standard.
     try {
-      const stored = localStorage.getItem("cbcharts-graph-size-v1.5");
+      const stored = localStorage.getItem("cbcharts-graph-size-v1.5.1");
 
       if (stored && Object.hasOwn(GRAPH_SIZES, stored)) {
         state.graphSize = stored;
