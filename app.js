@@ -32,7 +32,7 @@
     visualChartCount: 2,
     visualBuckets: ["0dte", "1dte"],
 
-    graphSize: "compact",
+    graphSize: "large",
     timelapseMode: "levels",
     playbackSpeed: 1,
 
@@ -134,7 +134,7 @@
   function applyGraphSize(value, persist = true) {
     state.graphSize = Object.hasOwn(GRAPH_SIZES, value)
       ? value
-      : "compact";
+      : "large";
 
     const select = $("graphSizeSelect");
     if (select) select.value = state.graphSize;
