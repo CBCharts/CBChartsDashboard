@@ -381,6 +381,15 @@
     return null;
   }
 
+  function currentTheoEsSpot() {
+    const spx = Number(state.spxSpot);
+    const basis = Number(state.theoEsBasis?.difference);
+
+    return Number.isFinite(spx) && Number.isFinite(basis)
+      ? spx + basis
+      : null;
+  }
+
   function renderSpotPrices() {
     const spx = Number(state.spxSpot);
     const basis = Number(state.theoEsBasis?.difference);
@@ -406,9 +415,9 @@
       $("spxSpotCard").classList.add("unavailable");
     }
 
-    if (Number.isFinite(spx) && Number.isFinite(basis)) {
-      const theoSpot = spx + basis;
+    const theoSpot = currentTheoEsSpot();
 
+    if (Number.isFinite(theoSpot)) {
       theoValue.textContent = formatNumber(theoSpot);
 
       // Keep the YYYYMMDD folder date and append only the time from the
@@ -544,6 +553,11 @@
           };
 
           renderSpotPrices();
+
+          if (state.voltra.length) {
+            renderAllVoltra();
+          }
+
           return;
         } catch (error) {
           lastError = error;
@@ -554,6 +568,11 @@
     } catch (error) {
       state.theoEsBasis = null;
       renderSpotPrices();
+
+      if (state.voltra.length) {
+        renderAllVoltra();
+      }
+
       console.warn("Theo ES spot basis unavailable:", error);
     }
   }
@@ -1295,11 +1314,21 @@
       maxStrike + strikePadding
     ];
 
+    const currentTheoSpot = currentTheoEsSpot();
+
     let theoRange = strikeRange;
 
-    if (theoValues.length) {
-      const minTheo = Math.min(...theoValues);
-      const maxTheo = Math.max(...theoValues);
+    if (theoValues.length || Number.isFinite(currentTheoSpot)) {
+      const theoRangeValues = [...theoValues];
+
+      // Include the current Theo ES Spot in the secondary-axis range so the
+      // reference line never disappears just outside the auto-derived range.
+      if (Number.isFinite(currentTheoSpot)) {
+        theoRangeValues.push(currentTheoSpot);
+      }
+
+      const minTheo = Math.min(...theoRangeValues);
+      const maxTheo = Math.max(...theoRangeValues);
       const theoSpan = Math.max(maxTheo - minTheo, medianStrikeStep);
 
       const theoPadding = Math.max(
@@ -1312,6 +1341,45 @@
         maxTheo + theoPadding
       ];
     }
+
+    const currentTheoShape = Number.isFinite(currentTheoSpot)
+      ? [{
+          type: "line",
+          xref: "paper",
+          x0: 0,
+          x1: 1,
+          yref: "y2",
+          y0: currentTheoSpot,
+          y1: currentTheoSpot,
+          layer: "above",
+          line: {
+            color: "#f4b942",
+            width: 2,
+            dash: "solid"
+          }
+        }]
+      : [];
+
+    const currentTheoAnnotation = Number.isFinite(currentTheoSpot)
+      ? [{
+          xref: "paper",
+          x: 1.008,
+          xanchor: "left",
+          yref: "y2",
+          y: currentTheoSpot,
+          yanchor: "middle",
+          text: formatNumber(currentTheoSpot),
+          showarrow: false,
+          bgcolor: "rgba(13,22,33,.94)",
+          bordercolor: "rgba(244,185,66,.55)",
+          borderwidth: 1,
+          borderpad: 3,
+          font: {
+            size: 10,
+            color: "#f4b942"
+          }
+        }]
+      : [];
 
     const baseChartHeight = Math.max(
       480,
@@ -1329,7 +1397,13 @@
         bargap: metricCount > 1 ? 0.20 : 0.18,
         bargroupgap: metricCount > 1 ? 0.08 : 0,
         hovermode: "closest",
-        margin: { l: 92, r: 95, t: 34, b: 56 },
+        margin: { l: 92, r: 132, t: 34, b: 56 },
+
+        // Current Theo ES Spot is shown as a solid yellow line spanning the
+        // complete plot width. yref="y2" ties it directly to the right-side
+        // Theo ES axis rather than the left Strike axis.
+        shapes: currentTheoShape,
+        annotations: currentTheoAnnotation,
 
         xaxis: {
           ...baseLayout.xaxis,
@@ -1366,7 +1440,7 @@
         yaxis2: {
           title: {
             text: "Theo ES",
-            standoff: 8,
+            standoff: 10,
             font: { size: 11, color: "#f4b942" }
           },
           overlaying: "y",
@@ -1514,6 +1588,10 @@
           : null;
 
         renderSpotPrices();
+
+        if (state.voltra.length) {
+          renderAllVoltra();
+        }
       }
 
       const responsiveHtml = makeEmbeddedPlotlyResponsive(rawHtml);
@@ -1531,6 +1609,10 @@
       if (index === 1) {
         state.spxSpot = null;
         renderSpotPrices();
+
+        if (state.voltra.length) {
+          renderAllVoltra();
+        }
       }
 
       $(loadingId).classList.add("hidden");
@@ -3065,6 +3147,10 @@
     ]);
 
     renderSpotPrices();
+
+    if (state.voltra.length) {
+      renderAllVoltra();
+    }
   }
 
   async function focusChanged() {
