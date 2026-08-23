@@ -14,13 +14,37 @@
     history: null,
     playTimer: null,
     frame: 0,
-    lastSingleMetric: "volume",
-    multiMetrics: ["volume"],
-    graphSize: "standard",
+
+    snapshotChartCount: 1,
+    snapshotCharts: [
+      {
+        metric: "volume",
+        lastSingleMetric: "volume",
+        multiMetrics: ["volume"]
+      },
+      {
+        metric: "oi",
+        lastSingleMetric: "oi",
+        multiMetrics: ["oi"]
+      }
+    ],
+
+    visualChartCount: 2,
+    visualBuckets: ["0dte", "1dte"],
+
+    graphSize: "compact",
     timelapseMode: "levels",
     playbackSpeed: 1,
+
+    autoRefreshEnabled: false,
+    refreshMinutes: 5,
+    refreshTimer: null,
+    lastDataOk: null,
+    lastDataMessage: "Loading latest data",
+
     generatedScriptType: null,
     generatedScriptFolder: null,
+
     spxSpot: null,
     theoEsBasis: null,
     latestPushermanFolders: [],
@@ -40,7 +64,7 @@
   };
 
   function graphScale() {
-    return GRAPH_SIZES[state.graphSize] || GRAPH_SIZES.standard;
+    return GRAPH_SIZES[state.graphSize] || GRAPH_SIZES.compact;
   }
 
   function setElementGraphHeight(id, baseHeight) {
@@ -64,67 +88,76 @@
     });
   }
 
-  function resizeEmbeddedVisual() {
-    const frame = $("visualFrame");
-    if (!frame) return;
+  function resizeEmbeddedVisual(index = null) {
+    const indexes = index == null ? [1, 2] : [index];
 
-    const baseHeight = 650;
-    const height = Math.round(baseHeight * graphScale());
-    frame.style.minHeight = `${height}px`;
-    frame.style.height = `${height}px`;
+    indexes.forEach((slot) => {
+      const frame = $(`visualFrame${slot}`);
+      if (!frame) return;
 
-    const panel = frame.closest(".visual-panel");
-    if (panel) {
-      panel.style.minHeight = `${height + 60}px`;
-    }
+      const baseHeight = 650;
+      const height = Math.round(baseHeight * graphScale());
 
-    const loading = $("visualLoading");
-    if (loading) loading.style.minHeight = `${height}px`;
+      frame.style.minHeight = `${height}px`;
+      frame.style.height = `${height}px`;
 
-    try {
-      const frameWindow = frame.contentWindow;
-      const frameDocument = frame.contentDocument;
-      if (!frameWindow || !frameDocument) return;
+      const panel = frame.closest(".visual-panel");
+      if (panel) {
+        panel.style.minHeight = `${height + 60}px`;
+      }
 
-      frameWindow.dispatchEvent(new Event("resize"));
+      const loading = $(`visualLoading${slot}`);
+      if (loading) loading.style.minHeight = `${height}px`;
 
-      const plots = frameDocument.querySelectorAll(".plotly-graph-div");
-      plots.forEach((plot) => {
-        if (frameWindow.Plotly?.Plots?.resize) {
-          frameWindow.Plotly.Plots.resize(plot);
-        }
-      });
-    } catch (_) {
-      // srcdoc is normally same-origin; if a browser blocks access,
-      // the iframe container itself still resizes.
-    }
+      try {
+        const frameWindow = frame.contentWindow;
+        const frameDocument = frame.contentDocument;
+
+        if (!frameWindow || !frameDocument) return;
+
+        frameWindow.dispatchEvent(new Event("resize"));
+
+        const plots = frameDocument.querySelectorAll(".plotly-graph-div");
+
+        plots.forEach((plot) => {
+          if (frameWindow.Plotly?.Plots?.resize) {
+            frameWindow.Plotly.Plots.resize(plot);
+          }
+        });
+      } catch (_) {
+        // srcdoc is normally same-origin; if a browser blocks access,
+        // the iframe container itself still resizes.
+      }
+    });
   }
 
   function applyGraphSize(value, persist = true) {
     state.graphSize = Object.hasOwn(GRAPH_SIZES, value)
       ? value
-      : "standard";
+      : "compact";
 
     const select = $("graphSizeSelect");
     if (select) select.value = state.graphSize;
 
     if (persist) {
       try {
-        localStorage.setItem("cbcharts-graph-size", state.graphSize);
+        localStorage.setItem("cbcharts-graph-size-v1.5", state.graphSize);
       } catch (_) {}
     }
 
-    // Voltra uses a row-dependent base height stored during render.
-    const voltra = $("voltraChart");
-    if (voltra) {
-      const base = Number(voltra.dataset.baseHeight) || 650;
-      voltra.style.height = `${Math.round(base * graphScale())}px`;
-    }
+    [1, 2].forEach((index) => {
+      const voltra = $(`voltraChart${index}`);
+
+      if (voltra) {
+        const base = Number(voltra.dataset.baseHeight) || 650;
+        voltra.style.height = `${Math.round(base * graphScale())}px`;
+      }
+
+      resizePlotlyElement(`voltraChart${index}`);
+    });
 
     setElementGraphHeight("timelapseChart", 560);
     resizeEmbeddedVisual();
-
-    resizePlotlyElement("voltraChart");
     resizePlotlyElement("timelapseChart");
 
     ["Ratio", "Total", "Call", "Put"].forEach((metric) => {
@@ -133,8 +166,11 @@
   }
 
   function loadStoredGraphSize() {
+    // v1.5 intentionally uses a fresh storage key so Compact becomes the
+    // default even for browsers that previously saved Standard.
     try {
-      const stored = localStorage.getItem("cbcharts-graph-size");
+      const stored = localStorage.getItem("cbcharts-graph-size-v1.5");
+
       if (stored && Object.hasOwn(GRAPH_SIZES, stored)) {
         state.graphSize = stored;
       }
@@ -541,11 +577,101 @@
     $(id).classList.add("hidden");
   }
 
+  function formatRefreshFrequency(minutes) {
+    return `${minutes} min`;
+  }
+
+  function updateLivePowerUI() {
+    const button = $("livePowerButton");
+    const text = $("livePowerText");
+    const menuStatus = $("liveMenuStatus");
+
+    if (!button || !text || !menuStatus) return;
+
+    button.classList.toggle("powered", state.autoRefreshEnabled);
+
+    if (state.autoRefreshEnabled) {
+      text.textContent =
+        state.lastDataOk === false
+          ? `Live · source issue`
+          : `Live · ${formatRefreshFrequency(state.refreshMinutes)}`;
+
+      menuStatus.textContent =
+        `On · every ${state.refreshMinutes} minutes`;
+      menuStatus.className = "live-status-on";
+    } else {
+      text.textContent =
+        state.lastDataOk === false
+          ? "Auto refresh off · source issue"
+          : "Auto refresh off";
+
+      menuStatus.textContent = "Off";
+      menuStatus.className = "live-status-off";
+    }
+  }
+
   function setConnection(ok, text) {
-    const dot = $("connectionDot");
-    dot.className = ok === true ? "online" : ok === false ? "error" : "";
-    $("connectionText").textContent = text;
-    $("lastRefresh").textContent = `Last refresh ${new Date().toLocaleTimeString()}`;
+    state.lastDataOk = ok;
+    state.lastDataMessage = text || "";
+
+    $("lastRefresh").textContent =
+      `Last refresh ${new Date().toLocaleTimeString()}`;
+
+    updateLivePowerUI();
+  }
+
+  function scheduleAutoRefresh() {
+    if (state.refreshTimer) {
+      clearInterval(state.refreshTimer);
+      state.refreshTimer = null;
+    }
+
+    if (!state.autoRefreshEnabled) return;
+
+    state.refreshTimer = setInterval(async () => {
+      await refreshLive();
+
+      if (state.view === "timelapse") {
+        await loadHistory();
+      }
+    }, state.refreshMinutes * 60 * 1000);
+  }
+
+  function setAutoRefreshEnabled(enabled) {
+    state.autoRefreshEnabled = Boolean(enabled);
+    scheduleAutoRefresh();
+    updateLivePowerUI();
+  }
+
+  function toggleLivePowerMenu(forceOpen = null) {
+    const menu = $("livePowerMenu");
+    const button = $("livePowerButton");
+
+    if (!menu || !button) return;
+
+    const shouldOpen =
+      forceOpen == null
+        ? menu.classList.contains("hidden")
+        : Boolean(forceOpen);
+
+    menu.classList.toggle("hidden", !shouldOpen);
+    button.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
+  }
+
+  function initLivePowerControl() {
+    try {
+      const stored = Number(localStorage.getItem("cbcharts-refresh-minutes"));
+
+      if ([3, 5, 15, 30, 60].includes(stored)) {
+        state.refreshMinutes = stored;
+      }
+    } catch (_) {}
+
+    $("refreshFrequencySelect").value = String(state.refreshMinutes);
+
+    // Requirement: every page load starts with automatic refresh OFF.
+    state.autoRefreshEnabled = false;
+    updateLivePowerUI();
   }
 
   function initControls() {
@@ -831,34 +957,44 @@
     return VOLTRA_METRICS[metricKey];
   }
 
-  function selectedVoltraMetrics() {
-    const mode = $("snapshotMetric").value;
+  function snapshotChartState(index) {
+    return state.snapshotCharts[index - 1];
+  }
+
+  function selectedVoltraMetrics(index) {
+    const mode = $(`snapshotMetric${index}`).value;
 
     if (mode !== "multi") {
       return [mode];
     }
 
-    const selected = [...document.querySelectorAll(
-      '#multiMetricOptions input[type="checkbox"]:checked'
-    )].map((input) => input.value);
-
-    return selected.slice(0, 3);
+    return [...document.querySelectorAll(
+      `#multiMetricOptions${index} input[type="checkbox"]:checked`
+    )]
+      .map((input) => input.value)
+      .slice(0, 3);
   }
 
-  function updateMultiMetricUI(message = "") {
-    const isMulti = $("snapshotMetric").value === "multi";
-    $("multiMetricPanel").classList.toggle("hidden", !isMulti);
+  function updateMultiMetricUI(index, message = "") {
+    const select = $(`snapshotMetric${index}`);
+    const panel = $(`multiMetricPanel${index}`);
+    const count = $(`multiMetricCount${index}`);
+
+    if (!select || !panel || !count) return;
+
+    const isMulti = select.value === "multi";
+    panel.classList.toggle("hidden", !isMulti);
 
     if (!isMulti) return;
 
-    const selected = selectedVoltraMetrics();
-    $("multiMetricCount").textContent =
-      message || `${selected.length}/3 selected`;
+    const selected = selectedVoltraMetrics(index);
+    count.textContent = message || `${selected.length}/3 selected`;
 
     document.querySelectorAll(
-      '#multiMetricOptions input[type="checkbox"]'
+      `#multiMetricOptions${index} input[type="checkbox"]`
     ).forEach((input) => {
       input.disabled = !input.checked && selected.length >= 3;
+
       input.closest(".multi-metric-option")?.classList.toggle(
         "disabled",
         input.disabled
@@ -866,81 +1002,98 @@
     });
   }
 
-  function initializeMultiMetricOptions() {
-    const options = Object.entries(VOLTRA_METRICS).map(([key, spec]) => `
-      <label class="multi-metric-option">
-        <input type="checkbox" value="${key}">
-        <span>${spec.shortLabel}</span>
-      </label>
-    `).join("");
+  function initializeMultiMetricOptions(index) {
+    const chartState = snapshotChartState(index);
+    const container = $(`multiMetricOptions${index}`);
 
-    $("multiMetricOptions").innerHTML = options;
+    const options = Object.entries(VOLTRA_METRICS)
+      .map(([key, spec]) => `
+        <label class="multi-metric-option">
+          <input type="checkbox" value="${key}">
+          <span>${spec.shortLabel}</span>
+        </label>
+      `)
+      .join("");
 
-    document.querySelectorAll(
-      '#multiMetricOptions input[type="checkbox"]'
-    ).forEach((input) => {
-      input.checked = state.multiMetrics.includes(input.value);
+    container.innerHTML = options;
+
+    container.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+      input.checked = chartState.multiMetrics.includes(input.value);
 
       input.addEventListener("change", () => {
-        let selected = selectedVoltraMetrics();
+        let selected = selectedVoltraMetrics(index);
 
-        // Multi must always contain at least one metric.
         if (!selected.length) {
           input.checked = true;
           selected = [input.value];
-          updateMultiMetricUI("At least 1 metric is required");
+          updateMultiMetricUI(index, "At least 1 metric is required");
           return;
         }
 
-        // Defensive cap even if disabled-state timing is bypassed.
         if (selected.length > 3) {
           input.checked = false;
-          selected = selectedVoltraMetrics();
-          updateMultiMetricUI("Maximum 3 metrics");
+          updateMultiMetricUI(index, "Maximum 3 metrics");
           return;
         }
 
-        state.multiMetrics = selected;
-        updateMultiMetricUI();
-        renderVoltra();
+        chartState.multiMetrics = selected;
+        updateMultiMetricUI(index);
+        renderVoltra(index);
       });
     });
 
-    updateMultiMetricUI();
+    updateMultiMetricUI(index);
   }
-  function renderVoltra() {
+
+  function updateSnapshotChartVisibility() {
+    [1, 2].forEach((index) => {
+      const visible = index <= state.snapshotChartCount;
+      $(`voltraPanel${index}`).classList.toggle("hidden", !visible);
+
+      if (visible && state.voltra.length) {
+        renderVoltra(index);
+      }
+    });
+  }
+
+  function renderVoltra(index = 1) {
+    const chartId = `voltraChart${index}`;
+    const errorId = `voltraError${index}`;
+    const titleId = `voltraTitle${index}`;
+
     const sourceRows = state.voltra.filter((row) =>
       row.timestamp &&
       Number.isFinite(Number(row.strikePrice))
     );
 
     if (!sourceRows.length) {
-      Plotly.purge("voltraChart");
+      Plotly.purge(chartId);
       showError(
-        "voltraError",
+        errorId,
         "The selected Voltra file does not contain usable strike data."
       );
       return;
     }
 
-    clearError("voltraError");
+    clearError(errorId);
 
-    const selectedKeys = selectedVoltraMetrics();
+    const selectedKeys = selectedVoltraMetrics(index);
+
     const specs = selectedKeys
       .map((key) => ({ key, ...metricSpec(key) }))
       .filter((spec) => spec.title);
 
     if (!specs.length) {
-      Plotly.purge("voltraChart");
-      showError("voltraError", "Select at least one bar metric.");
+      Plotly.purge(chartId);
+      showError(errorId, "Select at least one bar metric.");
       return;
     }
 
-    $("voltraTitle").textContent = specs.length === 1
-      ? specs[0].title
-      : specs.map((spec) => spec.shortLabel).join(" + ") + " by strike";
+    $(titleId).textContent =
+      specs.length === 1
+        ? specs[0].title
+        : specs.map((spec) => spec.shortLabel).join(" + ") + " by strike";
 
-    // Snapshot = newest timestamp only.
     const latestTimestamp = sourceRows
       .map((row) => String(row.timestamp))
       .sort()
@@ -965,16 +1118,16 @@
       );
     };
 
-    // A strike appears only when at least one selected metric has data.
     const activeRows = latestRows
       .filter((row) => specs.some((spec) => metricHasData(row, spec)))
       .sort((a, b) => Number(a.strikePrice) - Number(b.strikePrice));
 
     if (!activeRows.length) {
-      Plotly.purge("voltraChart");
+      Plotly.purge(chartId);
       showError(
-        "voltraError",
-        `No non-zero data is available for the selected metric(s) in ${C.buckets[state.bucket].label} at ${latestTimestamp}.`
+        errorId,
+        `No non-zero data is available for the selected metric(s) in ` +
+        `${C.buckets[state.bucket].label} at ${latestTimestamp}.`
       );
       return;
     }
@@ -984,10 +1137,10 @@
       .map((row) => Number(row["Theo ES"]))
       .filter(Number.isFinite);
 
-    // Every visible bar gets the same complete row-level hover payload.
     const hoverData = activeRows.map((row) => {
       const adjustedCall = Number(row.adj_call_vol);
       const adjustedPut = Number(row.adj_put_vol);
+
       const adjustedVolume =
         (Number.isFinite(adjustedCall) ? adjustedCall : 0) +
         (Number.isFinite(adjustedPut) ? adjustedPut : 0);
@@ -1015,7 +1168,7 @@
 
     const strikeDiffs = strikes
       .slice(1)
-      .map((strike, index) => strike - strikes[index])
+      .map((strike, rowIndex) => strike - strikes[rowIndex])
       .filter((diff) => Number.isFinite(diff) && diff > 0)
       .sort((a, b) => a - b);
 
@@ -1028,6 +1181,7 @@
 
     specs.forEach((spec, metricIndex) => {
       const colors = VOLTRA_COLOR_PAIRS[metricIndex];
+
       const widthFactor =
         metricCount === 1 ? 0.72 :
         metricCount === 2 ? 0.34 :
@@ -1061,6 +1215,7 @@
       const callValues = activeRows.map(
         (row) => Number(row[spec.call]) || 0
       );
+
       const putValues = activeRows.map(
         (row) => Number(row[spec.put]) || 0
       );
@@ -1094,8 +1249,6 @@
       });
     });
 
-    // Invisible secondary-axis trace:
-    // keeps the Theo ES Y-axis active without drawing yellow dots/lines.
     if (theoValues.length) {
       traces.push({
         type: "scatter",
@@ -1116,10 +1269,12 @@
     const minStrike = Math.min(...strikes);
     const maxStrike = Math.max(...strikes);
     const strikeSpan = Math.max(maxStrike - minStrike, medianStrikeStep);
+
     const strikePadding = Math.max(
       medianStrikeStep * 0.7,
       strikeSpan * 0.045
     );
+
     const strikeRange = [
       minStrike - strikePadding,
       maxStrike + strikePadding
@@ -1131,6 +1286,7 @@
       const minTheo = Math.min(...theoValues);
       const maxTheo = Math.max(...theoValues);
       const theoSpan = Math.max(maxTheo - minTheo, medianStrikeStep);
+
       const theoPadding = Math.max(
         medianStrikeStep * 0.7,
         theoSpan * 0.045
@@ -1147,10 +1303,10 @@
       Math.min(1100, activeRows.length * 27 + 165)
     );
 
-    setElementGraphHeight("voltraChart", baseChartHeight);
+    setElementGraphHeight(chartId, baseChartHeight);
 
     Plotly.react(
-      "voltraChart",
+      chartId,
       traces,
       {
         ...baseLayout,
@@ -1174,7 +1330,6 @@
           automargin: true
         },
 
-        // LEFT: data-bearing strike prices only.
         yaxis: {
           ...baseLayout.yaxis,
           title: {
@@ -1193,8 +1348,6 @@
           automargin: true
         },
 
-        // RIGHT: Theo ES remains a true secondary Y-axis, but uses clean
-        // auto-ticks rather than one label for every row.
         yaxis2: {
           title: {
             text: "Theo ES",
@@ -1230,12 +1383,20 @@
       plotConfig
     );
   }
+
+  function renderAllVoltra() {
+    for (let index = 1; index <= state.snapshotChartCount; index++) {
+      renderVoltra(index);
+    }
+  }
+
   async function loadVoltra() {
-    clearError("voltraError");
+    [1, 2].forEach((index) => clearError(`voltraError${index}`));
 
     try {
       const bucket = C.buckets[state.bucket];
       const text = await fetchText(raw("Voltra", bucket.voltra));
+
       state.voltra = parseCSV(text);
 
       const timestamp = state.voltra
@@ -1245,70 +1406,135 @@
         .sort()
         .at(-1);
 
-      $("voltraTimestamp").textContent =
-        timestamp ? `As of ${timestamp}` : "Latest";
+      [1, 2].forEach((index) => {
+        $(`voltraTimestamp${index}`).textContent =
+          timestamp ? `As of ${timestamp}` : "Latest";
+      });
 
-      renderVoltra();
+      renderAllVoltra();
     } catch (error) {
-      showError("voltraError", `Could not load Voltra: ${error.message}`);
+      for (let index = 1; index <= state.snapshotChartCount; index++) {
+        showError(
+          `voltraError${index}`,
+          `Could not load Voltra: ${error.message}`
+        );
+      }
     }
+  }
+
+  function initializeSnapshotControls() {
+    $("strikeChartCount").value = String(state.snapshotChartCount);
+    $("visualChartCount").value = String(state.visualChartCount);
+
+    [1, 2].forEach((index) => {
+      const chartState = snapshotChartState(index);
+      $(`snapshotMetric${index}`).value = chartState.metric;
+      initializeMultiMetricOptions(index);
+
+      const visualSelect = $(`visualBucket${index}`);
+      visualSelect.innerHTML = "";
+
+      for (const [key, bucket] of Object.entries(C.buckets)) {
+        const option = document.createElement("option");
+        option.value = key;
+        option.textContent = bucket.label;
+        visualSelect.appendChild(option);
+      }
+
+      visualSelect.value = state.visualBuckets[index - 1];
+    });
+
+    updateSnapshotChartVisibility();
+    updateVisualChartVisibility();
   }
 
   // ---------------------------------------------------------------------------
   // BRENT BS VISUALS
   // ---------------------------------------------------------------------------
 
-  async function loadVisual() {
-    clearError("visualError");
+  function updateVisualChartVisibility() {
+    [1, 2].forEach((index) => {
+      const visible = index <= state.visualChartCount;
+      $(`visualPanel${index}`).classList.toggle("hidden", !visible);
 
-    const bucket = C.buckets[state.bucket];
+      if (visible) {
+        resizeEmbeddedVisual(index);
+      }
+    });
+  }
+
+  async function loadVisual(index = 1) {
+    const errorId = `visualError${index}`;
+    const titleId = `visualTitle${index}`;
+    const sourceId = `visualSourceLink${index}`;
+    const loadingId = `visualLoading${index}`;
+    const frameId = `visualFrame${index}`;
+
+    clearError(errorId);
+
+    const bucketKey =
+      state.visualBuckets[index - 1] ||
+      (index === 1 ? "0dte" : "1dte");
+
+    const bucket = C.buckets[bucketKey];
     const file = `${bucket.visualPrefix}_brent_bs_${state.greek}.html`;
 
-    $("visualTitle").textContent = `${bucket.label} ${state.greek}`;
-    $("visualSourceLink").href =
+    $(titleId).textContent = `${bucket.label} ${state.greek}`;
+    $(sourceId).href =
       `https://github.com/CBCharts/BrentBSVisuals/blob/main/${file}`;
 
-    $("visualLoading").classList.remove("hidden");
-    $("visualFrame").classList.add("hidden");
+    $(loadingId).classList.remove("hidden");
+    $(frameId).classList.add("hidden");
 
-    resizeEmbeddedVisual();
+    resizeEmbeddedVisual(index);
 
     try {
       const rawHtml = await fetchText(raw("BrentBSVisuals", file));
-
       const extractedSpxSpot = extractSpxSpotFromPlotlyHtml(rawHtml);
 
-      if (Number.isFinite(extractedSpxSpot)) {
-        state.spxSpot = extractedSpxSpot;
-      } else {
-        state.spxSpot = null;
-      }
+      // Plotly slot 1 is the canonical SPX source for the persistent top bar.
+      if (index === 1) {
+        state.spxSpot = Number.isFinite(extractedSpxSpot)
+          ? extractedSpxSpot
+          : null;
 
-      renderSpotPrices();
+        renderSpotPrices();
+      }
 
       const responsiveHtml = makeEmbeddedPlotlyResponsive(rawHtml);
 
-      $("visualFrame").onload = () => {
-        $("visualLoading").classList.add("hidden");
-        $("visualFrame").classList.remove("hidden");
+      $(frameId).onload = () => {
+        $(loadingId).classList.add("hidden");
+        $(frameId).classList.remove("hidden");
 
-        // Give Plotly a moment to complete its own initialization, then
-        // resize the plot to the user-selected graph size.
-        setTimeout(resizeEmbeddedVisual, 50);
-        setTimeout(resizeEmbeddedVisual, 250);
+        setTimeout(() => resizeEmbeddedVisual(index), 50);
+        setTimeout(() => resizeEmbeddedVisual(index), 250);
       };
 
-      $("visualFrame").srcdoc = responsiveHtml;
+      $(frameId).srcdoc = responsiveHtml;
     } catch (error) {
-      state.spxSpot = null;
-      renderSpotPrices();
+      if (index === 1) {
+        state.spxSpot = null;
+        renderSpotPrices();
+      }
 
-      $("visualLoading").classList.add("hidden");
+      $(loadingId).classList.add("hidden");
+
       showError(
-        "visualError",
+        errorId,
         `Could not load BrentBSVisuals: ${error.message}`
       );
     }
+  }
+
+  async function loadVisuals() {
+    const jobs = [];
+
+    for (let index = 1; index <= state.visualChartCount; index++) {
+      jobs.push(loadVisual(index));
+    }
+
+    await Promise.allSettled(jobs);
   }
 
   // ---------------------------------------------------------------------------
@@ -2779,11 +3005,8 @@
 
     target.classList.add("active");
 
-    // Market controls are useful for the three market-data views, but are
-    // intentionally removed from Repo's, Script Generator, and How-To to keep
-    // those pages clean—especially on mobile.
-    const marketView = ["overview", "snapshot", "timelapse"].includes(view);
-    $("marketControls").classList.toggle("hidden", !marketView);
+    // v1.5: SPX/Theo ES and the compact market controls remain visible
+    // across every page.
 
     if (view === "overview") {
       renderSpotPrices();
@@ -2796,11 +3019,14 @@
     }
 
     if (view === "snapshot") {
-      // Snapshot Plotly elements may have originally rendered while hidden
-      // because Overview is now the default landing page.
       requestAnimationFrame(() => {
-        resizePlotlyElement("voltraChart");
-        resizeEmbeddedVisual();
+        for (let index = 1; index <= state.snapshotChartCount; index++) {
+          resizePlotlyElement(`voltraChart${index}`);
+        }
+
+        for (let index = 1; index <= state.visualChartCount; index++) {
+          resizeEmbeddedVisual(index);
+        }
       });
     }
 
@@ -2819,7 +3045,7 @@
     await Promise.allSettled([
       loadGauges(),
       loadVoltra(),
-      loadVisual(),
+      loadVisuals(),
       loadTheoEsBasis()
     ]);
 
@@ -2829,17 +3055,17 @@
   async function focusChanged() {
     state.history = null;
 
-    // RatPack cards now depend on the selected Greek, so refresh the top strip too.
     if (state.ratpack) {
       ["Ratio", "Total", "Call", "Put"].forEach((metric) => {
         renderMetricGauge(metric, state.ratpack);
       });
     }
 
-    // SPX is extracted from the currently selected BrentBSVisuals HTML.
-    await loadVisual();
+    await loadVisuals();
 
-    if (state.view === "timelapse") await loadHistory();
+    if (state.view === "timelapse") {
+      await loadHistory();
+    }
   }
 
   function wireEvents() {
@@ -2850,13 +3076,18 @@
     $("bucketSelect").addEventListener("change", async (event) => {
       state.bucket = event.target.value;
       state.history = null;
-      state.spxSpot = null;
       state.theoEsBasis = null;
       renderSpotPrices();
 
-      await refreshLive();
+      await Promise.allSettled([
+        loadGauges(),
+        loadVoltra(),
+        loadTheoEsBasis()
+      ]);
 
-      if (state.view === "timelapse") await loadHistory();
+      if (state.view === "timelapse") {
+        await loadHistory();
+      }
     });
 
     $("greekSelect").addEventListener("change", async (event) => {
@@ -2866,34 +3097,112 @@
 
     $("refreshButton").addEventListener("click", async () => {
       await refreshLive();
-      if (state.view === "timelapse") await loadHistory();
+
+      if (state.view === "timelapse") {
+        await loadHistory();
+      }
     });
 
     $("graphSizeSelect").addEventListener("change", (event) => {
       applyGraphSize(event.target.value);
     });
 
-    $("snapshotMetric").addEventListener("change", (event) => {
-      const value = event.target.value;
+    $("strikeChartCount").addEventListener("change", (event) => {
+      state.snapshotChartCount = Number(event.target.value) === 2 ? 2 : 1;
+      updateSnapshotChartVisibility();
+    });
 
-      if (value === "multi") {
-        // Seed Multi with the last single metric if nothing is selected.
-        if (!state.multiMetrics.length) {
-          state.multiMetrics = [state.lastSingleMetric];
+    $("visualChartCount").addEventListener("change", async (event) => {
+      state.visualChartCount = Number(event.target.value) === 1 ? 1 : 2;
+      updateVisualChartVisibility();
+
+      if (state.visualChartCount === 2) {
+        await loadVisual(2);
+      }
+    });
+
+    [1, 2].forEach((index) => {
+      $(`snapshotMetric${index}`).addEventListener("change", (event) => {
+        const chartState = snapshotChartState(index);
+        const value = event.target.value;
+
+        chartState.metric = value;
+
+        if (value === "multi") {
+          if (!chartState.multiMetrics.length) {
+            chartState.multiMetrics = [chartState.lastSingleMetric];
+          }
+
+          document.querySelectorAll(
+            `#multiMetricOptions${index} input[type="checkbox"]`
+          ).forEach((input) => {
+            input.checked = chartState.multiMetrics.includes(input.value);
+          });
+        } else {
+          chartState.lastSingleMetric = value;
         }
 
-        document.querySelectorAll(
-          '#multiMetricOptions input[type="checkbox"]'
-        ).forEach((input) => {
-          input.checked = state.multiMetrics.includes(input.value);
-        });
+        updateMultiMetricUI(index);
+        renderVoltra(index);
+      });
+
+      $(`visualBucket${index}`).addEventListener("change", async (event) => {
+        state.visualBuckets[index - 1] = event.target.value;
+
+        if (index <= state.visualChartCount) {
+          await loadVisual(index);
+        }
+      });
+    });
+
+    $("livePowerButton").addEventListener("click", (event) => {
+      event.stopPropagation();
+
+      // The power button starts live refresh. Once powered, clicking it again
+      // simply reopens/closes the settings menu so users can change frequency
+      // without accidentally shutting the feed off.
+      if (!state.autoRefreshEnabled) {
+        setAutoRefreshEnabled(true);
+        toggleLivePowerMenu(true);
       } else {
-        state.lastSingleMetric = value;
+        toggleLivePowerMenu();
+      }
+    });
+
+    $("livePowerOffButton").addEventListener("click", () => {
+      setAutoRefreshEnabled(false);
+      toggleLivePowerMenu(false);
+    });
+
+    $("livePowerMenu").addEventListener("click", (event) => {
+      event.stopPropagation();
+    });
+
+    $("refreshFrequencySelect").addEventListener("change", (event) => {
+      const minutes = Number(event.target.value);
+
+      if (![3, 5, 15, 30, 60].includes(minutes)) return;
+
+      state.refreshMinutes = minutes;
+
+      try {
+        localStorage.setItem(
+          "cbcharts-refresh-minutes",
+          String(state.refreshMinutes)
+        );
+      } catch (_) {}
+
+      if (state.autoRefreshEnabled) {
+        scheduleAutoRefresh();
       }
 
-      updateMultiMetricUI();
-      renderVoltra();
+      updateLivePowerUI();
     });
+
+    document.addEventListener("click", () => {
+      toggleLivePowerMenu(false);
+    });
+
     document.querySelectorAll(".timelapse-mode-button").forEach((button) => {
       button.addEventListener("click", () => {
         stopPlayback();
@@ -2949,24 +3258,21 @@
     loadStoredGraphSize();
     initControls();
     buildGaugeCards();
-    initializeMultiMetricOptions();
+    initializeSnapshotControls();
+    initLivePowerControl();
     renderRepos();
     wireEvents();
+
     applyGraphSize(state.graphSize, false);
     renderSpotPrices();
-    setConnection(null, "Connecting");
 
+    $("lastRefresh").textContent = "Loading latest data…";
+
+    // Startup behavior: load the newest data once, then stay static until
+    // the user manually refreshes or powers on automatic live refresh.
     await refreshLive();
 
-    setInterval(() => {
-      loadGauges();
-      loadVoltra();
-      loadTheoEsBasis();
-
-      // SPX lives inside the Plotly HTML. Keep it current so the dedicated
-      // Live Overview is ready whenever the user returns to that tab.
-      loadVisual();
-    }, C.refreshMs);
+    updateLivePowerUI();
   }
 
   init();
