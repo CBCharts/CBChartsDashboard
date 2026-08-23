@@ -1046,12 +1046,27 @@
   }
 
   function updateSnapshotChartVisibility() {
+    const grid = $("strikeSnapshotGrid");
+    const singleChart = state.snapshotChartCount === 1;
+
+    if (grid) {
+      grid.classList.toggle("single-strike-chart", singleChart);
+      grid.classList.toggle("double-strike-chart", !singleChart);
+    }
+
     [1, 2].forEach((index) => {
       const visible = index <= state.snapshotChartCount;
       $(`voltraPanel${index}`).classList.toggle("hidden", !visible);
 
       if (visible && state.voltra.length) {
         renderVoltra(index);
+      }
+    });
+
+    // Plotly needs a resize after its parent grid changes width.
+    requestAnimationFrame(() => {
+      for (let index = 1; index <= state.snapshotChartCount; index++) {
+        resizePlotlyElement(`voltraChart${index}`);
       }
     });
   }

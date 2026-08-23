@@ -1621,3 +1621,28 @@ input[type="date"] {
     padding: 13px;
   }
 }
+
+
+/* ========================================================================== */
+/* v1.5.3 — dynamic Strike Snapshot width                                     */
+/* ========================================================================== */
+
+#strikeSnapshotGrid.single-strike-chart {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+#strikeSnapshotGrid.double-strike-chart {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+#strikeSnapshotGrid > .panel {
+  min-width: 0;
+  width: 100%;
+}
+
+/* At narrower desktop/tablet widths, two charts remain readable by stacking. */
+@media (max-width: 1180px) {
+  #strikeSnapshotGrid.double-strike-chart {
+    grid-template-columns: 1fr;
+  }
+}
