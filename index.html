@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#080d14">
   <title>CBCharts Market Dashboard</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=1.5.1">
+  <link rel="stylesheet" href="styles.css?v=1.5.2">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 </head>
@@ -20,7 +20,7 @@
       <button class="nav-item" data-view="timelapse"><span>▶</span><b>Timelapse</b></button>
       <button class="nav-item" data-view="repos"><span>⌘</span><b>Repo's</b></button>
       <button class="nav-item" data-view="pinescript"><span>ƒ</span><b>Script Generator</b></button>
-      <button class="nav-item" data-view="howto"><span>?</span><b>How-To</b></button>
+      <button class="nav-item" data-view="howto"><span>?</span><b>How-To / Index</b></button>
     </nav>
     <div class="sidebar-footer">
       <div class="live-power-control">
@@ -451,16 +451,136 @@
       </section>
 
       <section id="view-howto" class="view">
-        <header class="section-heading"><div><div class="eyebrow">Guide</div><h2>How-To</h2><p>Quick reference for using the dashboard and understanding its data.</p></div></header>
+        <header class="section-heading">
+          <div>
+            <div class="eyebrow">Guide + reference</div>
+            <h2>How-To / Index</h2>
+            <p>Quick instructions for using the dashboard plus an alphabetical reference for its core data terms.</p>
+          </div>
+        </header>
+
+        <div class="howto-section-heading">
+          <div>
+            <div class="panel-kicker">Dashboard guide</div>
+            <h3>How-To</h3>
+          </div>
+        </div>
+
         <div class="howto-grid">
-          <article class="panel prose"><h3>Snapshot</h3><p>Choose an expiration bucket and focus Greek above. Gauges read RatPack, strike bars read Voltra, and the right panel loads BrentBSVisuals.</p></article>
-          <article class="panel prose"><h3>Timelapse</h3><p>Choose a historical date, bucket, and Greek. The chart follows Call 1–5 and Put 1–5 strike levels over time. Press Play to move the active frame.</p></article>
-          <article class="panel prose"><h3>Automatic refresh</h3><p>Live snapshot sources refresh once per minute with cache busting. Historical timelapse data reloads only when its controls change.</p></article>
-          <article class="panel prose"><h3>GitHub Pages</h3><p>This is a static site. GitHub Pages hosts the interface while the browser fetches raw data directly from your existing repositories.</p></article>
+          <article class="panel prose">
+            <h3>Live Overview</h3>
+            <p>Use the expiration bucket and Focus Greek controls at the top of the page. The Live Overview tab displays Ratio, Total, Calls, and Puts for the selected Greek and expiration bucket.</p>
+          </article>
+
+          <article class="panel prose">
+            <h3>Snapshot</h3>
+            <p>Strike snapshots read Voltra data and use the global expiration bucket. You can display one or two strike charts with independent bar metrics. BrentBSVisuals defaults to two Greek exposure charts, 0DTE and 1DTE, with independent expiration selectors.</p>
+          </article>
+
+          <article class="panel prose">
+            <h3>Timelapse</h3>
+            <p>Choose a historical date, expiration bucket, and Greek. Toggle between Level Lines and Ranked Bars, use the playback-speed control, or drag the timeline slider to inspect an exact historical frame.</p>
+          </article>
+
+          <article class="panel prose">
+            <h3>Live Data / Refresh</h3>
+            <p>The dashboard loads the newest available data once when the page starts. Automatic refresh is OFF by default. Use the power control to enable refresh every 3, 5, 15, 30, or 60 minutes, or press Refresh at any time for a one-time update.</p>
+          </article>
+
+          <article class="panel prose">
+            <h3>Script Generator</h3>
+            <p>Generation is manual. Choose Generate Pine Script for TradingView or Generate ThinkScript for Thinkorswim. Both use the newest Pusherman3000 folder, the newest timestamp in each bucket, GEX rows only, and Theo ES as the ES-chart level.</p>
+          </article>
+
+          <article class="panel prose">
+            <h3>GitHub Pages</h3>
+            <p>This is a static site. GitHub Pages hosts the interface while your browser fetches public raw data directly from the CBCharts repositories. No separate web server or database is required for the dashboard.</p>
+          </article>
+        </div>
+
+        <div class="howto-section-heading index-section-heading">
+          <div>
+            <div class="panel-kicker">Reference</div>
+            <h3>Index</h3>
+          </div>
+          <small>Alphabetical reference</small>
+        </div>
+
+        <div class="index-grid">
+          <article class="index-entry">
+            <div class="index-term">0DTE</div>
+            <p>Zero days to expire.</p>
+          </article>
+
+          <article class="index-entry">
+            <div class="index-term">1DTE</div>
+            <p><strong>JUST</strong> the following day's data.</p>
+          </article>
+
+          <article class="index-entry">
+            <div class="index-term">Adjusted Sum</div>
+            <p>(Call Volume - Call Open Interest) - (Put Volume - Put Open Interest)</p>
+          </article>
+
+          <article class="index-entry">
+            <div class="index-term">Adjusted Volume</div>
+            <p>Volume - Open Interest</p>
+          </article>
+
+          <article class="index-entry">
+            <div class="index-term">EOM</div>
+            <p><strong>REMAINING CONTRACTS</strong> expiring within the current month.</p>
+          </article>
+
+          <article class="index-entry">
+            <div class="index-term">EOW</div>
+            <p><strong>REMAINING CONTRACTS</strong> expiring within the current week.</p>
+          </article>
+
+          <article class="index-entry">
+            <div class="index-term">FULL</div>
+            <p><strong>ALL CONTRACTS</strong> expiring within the next 90 days.</p>
+          </article>
+
+          <article class="index-entry">
+            <div class="index-term">NEX_EOM</div>
+            <p><strong>ALL CONTRACTS</strong> expiring within the following month.</p>
+          </article>
+
+          <article class="index-entry">
+            <div class="index-term">NEX_EOW</div>
+            <p><strong>ALL CONTRACTS</strong> expiring within the following week.</p>
+          </article>
+
+          <article class="index-entry">
+            <div class="index-term">Ratio <span>Live Market Overview</span></div>
+            <p>% of Calls / absolute Calls + Puts</p>
+          </article>
+
+          <article class="index-entry index-entry-warning">
+            <div class="index-term">Theo ES</div>
+            <p>The theoretical price of the current ES Futures contract.</p>
+            <div class="index-warning">THIS APP DOES NOT HAVE LIVE DATA</div>
+          </article>
+
+          <article class="index-entry">
+            <div class="index-term">Total <span>Live Market Overview</span></div>
+            <p>Call value - Puts value</p>
+          </article>
+
+          <article class="index-entry">
+            <div class="index-term">Total Volume</div>
+            <p>Call Volume + Put Volume</p>
+          </article>
+
+          <article class="index-entry">
+            <div class="index-term">VOLTRA</div>
+            <p>Container for volume, open interest, adjusted volume, total volume, and adjusted sum data.</p>
+          </article>
         </div>
       </section>
     </div>
   </main>
 </div>
-<script src="config.js?v=1.5.1"></script><script src="app.js?v=1.5.1"></script>
+<script src="config.js?v=1.5.2"></script><script src="app.js?v=1.5.2"></script>
 </body></html>
