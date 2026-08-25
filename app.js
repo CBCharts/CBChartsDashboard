@@ -47,6 +47,8 @@
     manualRefreshBusy: false,
     hideManualRefreshNotice: false,
 
+    historyDateNoticeTimer: null,
+
     lastDataOk: null,
     lastDataMessage: "Loading latest data",
 
@@ -2323,6 +2325,68 @@
     return `${text.slice(0, 4)}-${text.slice(4, 6)}-${text.slice(6, 8)}`;
   }
 
+  function formatHistoryDateForMessage(folder) {
+    const text = String(folder || "");
+
+    if (!/^\d{8}$/.test(text)) return text;
+
+    // Requested display format: MMDDYYYY
+    return `${text.slice(4, 6)}${text.slice(6, 8)}${text.slice(0, 4)}`;
+  }
+
+  function closeHistoryDateNotice() {
+    if (state.historyDateNoticeTimer) {
+      clearTimeout(state.historyDateNoticeTimer);
+      state.historyDateNoticeTimer = null;
+    }
+
+    $("historyDateNotice").classList.add("hidden");
+  }
+
+  function showHistoryDateNotice(requestedFolder) {
+    closeHistoryDateNotice();
+
+    $("historyDateNoticeText").textContent =
+      `No Data Available for ${formatHistoryDateForMessage(requestedFolder)}, ` +
+      `Reverting to Most Recent Date`;
+
+    $("historyDateNotice").classList.remove("hidden");
+
+    state.historyDateNoticeTimer = setTimeout(() => {
+      closeHistoryDateNotice();
+    }, 3000);
+  }
+
+  async function resolveHistoryFolder(requestedFolder) {
+    let folders = await getLatestPushermanFolders();
+
+    if (folders.includes(requestedFolder)) {
+      return requestedFolder;
+    }
+
+    // Re-check GitHub once before declaring the date unavailable. This avoids
+    // a false fallback if the cached folder list is a few minutes behind.
+    folders = await getLatestPushermanFolders(true);
+
+    if (folders.includes(requestedFolder)) {
+      return requestedFolder;
+    }
+
+    const latestFolder = folders[0];
+
+    if (!latestFolder) {
+      throw new Error("No Pusherman3000 date folders are available.");
+    }
+
+    showHistoryDateNotice(requestedFolder);
+
+    const latestDate = folderToDateInput(latestFolder);
+    $("historyDate").value = latestDate;
+    $("historyDate").max = latestDate;
+
+    return latestFolder;
+  }
+
   async function initializeLatestHistoryDate() {
     try {
       const folders = await getLatestPushermanFolders(true);
@@ -2342,19 +2406,31 @@
     stopPlayback();
     clearError("timelapseError");
 
-    const date = ymd($("historyDate").value);
+    const requestedDate = ymd($("historyDate").value);
+
+    if (!requestedDate) {
+      return;
+    }
+
     $("timelineLabel").textContent = "Loading session…";
 
     try {
-      const text = await fetchText(raw("pusherman3000", historicalPath(date), false));
+      const date = await resolveHistoryFolder(requestedDate);
+
+      const text = await fetchText(
+        raw("pusherman3000", historicalPath(date), false)
+      );
+
       state.history = buildHistory(parseCSV(text));
       renderHistory(state.history);
     } catch (error) {
       state.history = null;
       $("timelineLabel").textContent = "Session unavailable";
+
       showError(
         "timelapseError",
-        `Could not load ${date} ${C.buckets[state.bucket].label} ${state.greek}: ${error.message}`
+        `Could not load ${ymd($("historyDate").value)} ` +
+        `${C.buckets[state.bucket].label} ${state.greek}: ${error.message}`
       );
     }
   }
@@ -3551,6 +3627,10 @@
     });
 
     $("historyDate").addEventListener("change", loadHistory);
+
+    $("historyDateNoticeClose").addEventListener("click", () => {
+      closeHistoryDateNotice();
+    });
 
     $("timelineSlider").addEventListener("input", (event) => {
       stopPlayback();

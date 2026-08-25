@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#080d14">
   <title>CBCharts Market Dashboard</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=1.6.0">
+  <link rel="stylesheet" href="styles.css?v=1.6.1">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 </head>
@@ -594,6 +594,29 @@
   </main>
 </div>
 
+
+<div
+  id="historyDateNotice"
+  class="history-date-notice hidden"
+  role="alert"
+  aria-live="assertive"
+>
+  <button
+    id="historyDateNoticeClose"
+    class="history-date-notice-close"
+    type="button"
+    aria-label="Close message"
+    title="Close"
+  >×</button>
+
+  <div class="history-date-notice-icon" aria-hidden="true">!</div>
+
+  <div class="history-date-notice-copy">
+    <div class="eyebrow">Trading date</div>
+    <div id="historyDateNoticeText" class="history-date-notice-text"></div>
+  </div>
+</div>
+
 <div id="manualRefreshModal" class="manual-refresh-modal hidden" role="dialog" aria-modal="true" aria-labelledby="manualRefreshModalTitle">
   <div class="manual-refresh-dialog">
     <div class="manual-refresh-dialog-icon" aria-hidden="true">↻</div>
@@ -612,5 +635,5 @@
   </div>
 </div>
 
-<script src="config.js?v=1.6.0"></script><script src="app.js?v=1.6.0"></script>
+<script src="config.js?v=1.6.1"></script><script src="app.js?v=1.6.1"></script>
 </body></html>
