@@ -1495,7 +1495,26 @@ input[type="date"] {
     width: 100%;
   }
 }
-\n\n.live-power-off-button {\n  width: 100%;\n  min-height: 31px;\n  margin-top: 9px;\n  border: 1px solid rgba(255,95,104,.25);\n  border-radius: 7px;\n  background: rgba(255,95,104,.06);\n  color: #eaa1a6;\n  cursor: pointer;\n  font-size: 9px;\n  font-weight: 800;\n}\n\n.live-power-off-button:hover {\n  border-color: rgba(255,95,104,.45);\n  background: rgba(255,95,104,.10);\n}\n
+
+
+.live-power-off-button {
+  width: 100%;
+  min-height: 31px;
+  margin-top: 9px;
+  border: 1px solid rgba(255,95,104,.25);
+  border-radius: 7px;
+  background: rgba(255,95,104,.06);
+  color: #eaa1a6;
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.live-power-off-button:hover {
+  border-color: rgba(255,95,104,.45);
+  background: rgba(255,95,104,.10);
+}
+
 
 /* ========================================================================== */
 /* v1.5.2 — How-To / Index                                                    */
@@ -1644,5 +1663,214 @@ input[type="date"] {
 @media (max-width: 1180px) {
   #strikeSnapshotGrid.double-strike-chart {
     grid-template-columns: 1fr;
+  }
+}
+
+
+/* ========================================================================== */
+/* v1.6 — robust refresh, tighter Plotly panels, 2x2 angular gauges           */
+/* ========================================================================== */
+
+/* Live Overview: half-circle/angular gauges, 2x2 desktop and 1-column mobile. */
+#view-overview .gauge-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+#view-overview .gauge-card {
+  min-height: 255px;
+  padding: 14px 16px 10px;
+}
+
+#view-overview .gauge-value {
+  font-size: 24px;
+}
+
+#view-overview .gauge-chart {
+  height: 150px;
+  margin-top: 5px;
+}
+
+/* BrentBSVisuals: let JS own the iframe/panel height instead of the old 650px floor. */
+.visual-panel {
+  min-height: 0;
+}
+
+.visual-panel iframe {
+  flex: 0 0 auto;
+  min-height: 0;
+  height: auto;
+}
+
+.visual-panel .loading {
+  flex: 0 0 auto;
+  min-height: 0;
+}
+
+/* Manual + automatic refresh controls share the lower-left action row. */
+.sidebar-refresh-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 82px;
+  gap: 7px;
+  align-items: stretch;
+}
+
+.live-power-control {
+  min-width: 0;
+}
+
+.manual-refresh-button {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 7px 8px;
+  border: 1px solid rgba(91,167,255,.48);
+  border-radius: 9px;
+  background: rgba(91,167,255,.10);
+  color: #cce6ff;
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 850;
+  transition:
+    opacity .18s ease,
+    border-color .18s ease,
+    background .18s ease,
+    color .18s ease;
+}
+
+.manual-refresh-button.ready {
+  border-color: rgba(91,167,255,.70);
+  background: rgba(91,167,255,.16);
+  color: #e5f3ff;
+  box-shadow: inset 0 0 0 1px rgba(91,167,255,.10);
+}
+
+.manual-refresh-button.ready:hover {
+  background: rgba(91,167,255,.23);
+}
+
+.manual-refresh-button.cooldown,
+.manual-refresh-button:disabled {
+  border-color: #293542;
+  background: #10161e;
+  color: #657484;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.manual-refresh-glyph {
+  font-size: 15px;
+  line-height: 1;
+}
+
+/* Manual-refresh notice. */
+body.modal-open {
+  overflow: hidden;
+}
+
+.manual-refresh-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(3,7,12,.76);
+  backdrop-filter: blur(6px);
+}
+
+.manual-refresh-dialog {
+  width: min(470px, 100%);
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid #33495f;
+  border-radius: 13px;
+  background: linear-gradient(180deg, #111d29, #0b131c);
+  box-shadow: 0 24px 70px rgba(0,0,0,.48);
+}
+
+.manual-refresh-dialog-icon {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(91,167,255,.45);
+  border-radius: 50%;
+  background: rgba(91,167,255,.10);
+  color: #8fc8ff;
+  font-size: 25px;
+}
+
+.manual-refresh-dialog h3 {
+  margin: 3px 0 7px;
+}
+
+.manual-refresh-dialog p {
+  color: #a8b8c9;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.manual-refresh-dismiss-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 13px 0;
+  color: #9fb0c1;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.manual-refresh-dismiss-option input {
+  margin-top: 2px;
+  accent-color: #5ba7ff;
+}
+
+/* Existing top control row no longer has the old unrestricted Refresh button. */
+.market-controls .toolbar-controls {
+  align-items: flex-end;
+}
+
+@media (max-width: 900px) {
+  #view-overview .gauge-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  #view-overview .gauge-grid {
+    grid-template-columns: 1fr;
+  }
+
+  #view-overview .gauge-card {
+    min-height: 245px;
+  }
+
+  .sidebar-refresh-actions {
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  .live-power-button {
+    min-width: 112px;
+  }
+
+  .manual-refresh-button {
+    min-width: 82px;
+    min-height: 42px;
+  }
+
+  .manual-refresh-dialog {
+    grid-template-columns: 1fr;
+  }
+
+  .manual-refresh-dialog-icon {
+    width: 40px;
+    height: 40px;
   }
 }

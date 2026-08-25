@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#080d14">
   <title>CBCharts Market Dashboard</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=1.5.4">
+  <link rel="stylesheet" href="styles.css?v=1.6.0">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 </head>
@@ -23,21 +23,22 @@
       <button class="nav-item" data-view="howto"><span>?</span><b>How-To / Index</b></button>
     </nav>
     <div class="sidebar-footer">
-      <div class="live-power-control">
-        <button
-          id="livePowerButton"
-          class="live-power-button"
-          type="button"
-          aria-expanded="false"
-          aria-controls="livePowerMenu"
-          title="Toggle automatic live-data refresh"
-        >
-          <span class="power-glyph" aria-hidden="true">⏻</span>
-          <span id="livePowerText" class="live-power-text">Auto refresh off</span>
-          <span class="power-chevron" aria-hidden="true">⌄</span>
-        </button>
+      <div class="sidebar-refresh-actions">
+        <div class="live-power-control">
+          <button
+            id="livePowerButton"
+            class="live-power-button"
+            type="button"
+            aria-expanded="false"
+            aria-controls="livePowerMenu"
+            title="Toggle automatic live-data refresh"
+          >
+            <span class="power-glyph" aria-hidden="true">⏻</span>
+            <span id="livePowerText" class="live-power-text">Auto refresh off</span>
+            <span class="power-chevron" aria-hidden="true">⌄</span>
+          </button>
 
-        <div id="livePowerMenu" class="live-power-menu hidden">
+          <div id="livePowerMenu" class="live-power-menu hidden">
           <div class="live-power-menu-head">
             <span>Live data</span>
             <strong id="liveMenuStatus">Off</strong>
@@ -54,9 +55,20 @@
             </select>
           </label>
 
-          <button id="livePowerOffButton" class="live-power-off-button" type="button">Power off automatic refresh</button>
-          <small>Power is off on every new page load.</small>
+            <button id="livePowerOffButton" class="live-power-off-button" type="button">Power off automatic refresh</button>
+            <small>Power is off on every new page load.</small>
+          </div>
         </div>
+
+        <button
+          id="manualRefreshButton"
+          class="manual-refresh-button ready"
+          type="button"
+          title="Manually refresh dashboard data"
+        >
+          <span class="manual-refresh-glyph" aria-hidden="true">↻</span>
+          <span id="manualRefreshText">Refresh</span>
+        </button>
       </div>
 
       <small id="lastRefresh">Loading latest data…</small>
@@ -109,7 +121,6 @@
             </select>
           </label>
 
-          <button id="refreshButton" class="ghost-button">Refresh</button>
         </div>
       </div>
     </section>
@@ -179,7 +190,7 @@
                     <option value="oi">Open interest</option>
                     <option value="adjusted">Adjusted volume</option>
                     <option value="totalVolume">Total volume</option>
-                    <option value="adjustedSum">Adjusted sum</option>
+                    <option value="adjustedSum" selected>Adjusted sum</option>
                     <option value="multi">Multi</option>
                 </select>
               </label>
@@ -286,7 +297,7 @@
             <h2>Ranked level timelapse</h2>
             <p>Animate dealer positioning through the selected trading session using level lines or ranked value bars.</p>
           </div>
-          <label><span>Trading date</span><input id="historyDate" type="date" value="2026-08-20"></label>
+          <label><span>Trading date</span><input id="historyDate" type="date"></label>
         </header>
 
         <article class="panel">
@@ -582,5 +593,24 @@
     </div>
   </main>
 </div>
-<script src="config.js?v=1.5.4"></script><script src="app.js?v=1.5.4"></script>
+
+<div id="manualRefreshModal" class="manual-refresh-modal hidden" role="dialog" aria-modal="true" aria-labelledby="manualRefreshModalTitle">
+  <div class="manual-refresh-dialog">
+    <div class="manual-refresh-dialog-icon" aria-hidden="true">↻</div>
+    <div>
+      <div class="eyebrow">Manual refresh</div>
+      <h3 id="manualRefreshModalTitle">Refresh complete</h3>
+      <p>Manual refresh is now locked for 3 minutes. The button will illuminate again when another manual refresh is available.</p>
+
+      <label class="manual-refresh-dismiss-option">
+        <input id="manualRefreshDontShow" type="checkbox">
+        <span>Don't show this message again on this browser</span>
+      </label>
+
+      <button id="manualRefreshModalClose" class="primary-button" type="button">Got it</button>
+    </div>
+  </div>
+</div>
+
+<script src="config.js?v=1.6.0"></script><script src="app.js?v=1.6.0"></script>
 </body></html>

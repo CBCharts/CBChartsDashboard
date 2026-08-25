@@ -18,9 +18,9 @@
     snapshotChartCount: 1,
     snapshotCharts: [
       {
-        metric: "volume",
-        lastSingleMetric: "volume",
-        multiMetrics: ["volume"]
+        metric: "adjustedSum",
+        lastSingleMetric: "adjustedSum",
+        multiMetrics: ["adjustedSum"]
       },
       {
         metric: "oi",
@@ -35,10 +35,18 @@
     graphSize: "large",
     timelapseMode: "levels",
     playbackSpeed: 1,
+    playbackPassesCompleted: 0,
 
     autoRefreshEnabled: false,
     refreshMinutes: 5,
     refreshTimer: null,
+    refreshPromise: null,
+
+    manualRefreshReadyAt: 0,
+    manualRefreshTicker: null,
+    manualRefreshBusy: false,
+    hideManualRefreshNotice: false,
+
     lastDataOk: null,
     lastDataMessage: "Loading latest data",
 
@@ -88,6 +96,12 @@
     });
   }
 
+  const EMBEDDED_VISUAL_HEIGHTS = {
+    compact: 340,
+    standard: 410,
+    large: 500
+  };
+
   function resizeEmbeddedVisual(index = null) {
     const indexes = index == null ? [1, 2] : [index];
 
@@ -95,15 +109,19 @@
       const frame = $(`visualFrame${slot}`);
       if (!frame) return;
 
-      const baseHeight = 650;
-      const height = Math.round(baseHeight * graphScale());
+      // BrentBSVisuals has a much shorter natural aspect ratio than the
+      // Voltra/Timelapse charts. Use dedicated heights instead of scaling
+      // the old 650px iframe, which created large empty areas below the plot.
+      const height =
+        EMBEDDED_VISUAL_HEIGHTS[state.graphSize] ||
+        EMBEDDED_VISUAL_HEIGHTS.large;
 
       frame.style.minHeight = `${height}px`;
       frame.style.height = `${height}px`;
 
       const panel = frame.closest(".visual-panel");
       if (panel) {
-        panel.style.minHeight = `${height + 60}px`;
+        panel.style.minHeight = `${height + 58}px`;
       }
 
       const loading = $(`visualLoading${slot}`);
@@ -120,6 +138,13 @@
         const plots = frameDocument.querySelectorAll(".plotly-graph-div");
 
         plots.forEach((plot) => {
+          if (frameWindow.Plotly?.relayout) {
+            frameWindow.Plotly.relayout(plot, {
+              autosize: true,
+              height
+            });
+          }
+
           if (frameWindow.Plotly?.Plots?.resize) {
             frameWindow.Plotly.Plots.resize(plot);
           }
@@ -195,10 +220,6 @@
         .svg-container {
           width: 100% !important;
           max-width: 100% !important;
-        }
-
-        .plotly-graph-div,
-        .js-plotly-plot {
           height: 100% !important;
           min-height: 100% !important;
         }
@@ -600,6 +621,157 @@
     return `${minutes} min`;
   }
 
+  const MANUAL_REFRESH_COOLDOWN_MS = 3 * 60 * 1000;
+
+  function manualRefreshRemainingMs() {
+    return Math.max(0, state.manualRefreshReadyAt - Date.now());
+  }
+
+  function formatCooldown(ms) {
+    const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${String(seconds).padStart(2, "0")}`;
+  }
+
+  function updateManualRefreshUI() {
+    const button = $("manualRefreshButton");
+    if (!button) return;
+
+    const remaining = manualRefreshRemainingMs();
+    const frozen = remaining > 0 || state.manualRefreshBusy;
+
+    button.disabled = frozen;
+    button.classList.toggle("cooldown", frozen);
+    button.classList.toggle("ready", !frozen);
+
+    if (state.manualRefreshBusy) {
+      $("manualRefreshText").textContent = "Refreshing…";
+      button.title = "Refreshing dashboard data";
+    } else if (remaining > 0) {
+      $("manualRefreshText").textContent = formatCooldown(remaining);
+      button.title =
+        `Manual refresh available again in ${formatCooldown(remaining)}`;
+    } else {
+      $("manualRefreshText").textContent = "Refresh";
+      button.title = "Manually refresh dashboard data";
+    }
+  }
+
+  function stopManualRefreshTicker() {
+    if (state.manualRefreshTicker) {
+      clearInterval(state.manualRefreshTicker);
+      state.manualRefreshTicker = null;
+    }
+  }
+
+  function startManualRefreshTicker() {
+    stopManualRefreshTicker();
+    updateManualRefreshUI();
+
+    if (manualRefreshRemainingMs() <= 0) return;
+
+    state.manualRefreshTicker = setInterval(() => {
+      updateManualRefreshUI();
+
+      if (manualRefreshRemainingMs() <= 0) {
+        stopManualRefreshTicker();
+        updateManualRefreshUI();
+      }
+    }, 1000);
+  }
+
+  function setManualRefreshCooldown() {
+    state.manualRefreshReadyAt = Date.now() + MANUAL_REFRESH_COOLDOWN_MS;
+
+    try {
+      localStorage.setItem(
+        "cbcharts-manual-refresh-ready-at",
+        String(state.manualRefreshReadyAt)
+      );
+    } catch (_) {}
+
+    startManualRefreshTicker();
+  }
+
+  function showManualRefreshNotice() {
+    if (state.hideManualRefreshNotice) return;
+
+    $("manualRefreshDontShow").checked = false;
+    $("manualRefreshModal").classList.remove("hidden");
+    document.body.classList.add("modal-open");
+  }
+
+  function closeManualRefreshNotice() {
+    if ($("manualRefreshDontShow").checked) {
+      state.hideManualRefreshNotice = true;
+
+      try {
+        localStorage.setItem(
+          "cbcharts-hide-manual-refresh-notice",
+          "true"
+        );
+      } catch (_) {}
+    }
+
+    $("manualRefreshModal").classList.add("hidden");
+    document.body.classList.remove("modal-open");
+  }
+
+  async function runManualRefresh() {
+    if (
+      state.manualRefreshBusy ||
+      manualRefreshRemainingMs() > 0
+    ) {
+      updateManualRefreshUI();
+      return;
+    }
+
+    // Start the cooldown immediately so repeated clicks/network delays
+    // cannot result in overlapping GitHub request bursts.
+    state.manualRefreshBusy = true;
+    setManualRefreshCooldown();
+    updateManualRefreshUI();
+
+    try {
+      await refreshLive();
+
+      if (state.view === "timelapse") {
+        await loadHistory();
+      }
+    } finally {
+      state.manualRefreshBusy = false;
+      updateManualRefreshUI();
+      showManualRefreshNotice();
+    }
+  }
+
+  function initManualRefreshControl() {
+    try {
+      const storedReadyAt = Number(
+        localStorage.getItem("cbcharts-manual-refresh-ready-at")
+      );
+
+      if (Number.isFinite(storedReadyAt)) {
+        state.manualRefreshReadyAt = storedReadyAt;
+      }
+
+      state.hideManualRefreshNotice =
+        localStorage.getItem("cbcharts-hide-manual-refresh-notice") ===
+        "true";
+    } catch (_) {}
+
+    if (manualRefreshRemainingMs() <= 0) {
+      state.manualRefreshReadyAt = 0;
+
+      try {
+        localStorage.removeItem("cbcharts-manual-refresh-ready-at");
+      } catch (_) {}
+    }
+
+    startManualRefreshTicker();
+  }
+
   function updateLivePowerUI() {
     const button = $("livePowerButton");
     const text = $("livePowerText");
@@ -839,24 +1011,27 @@
     }
 
     const gauge = {
-      shape: "bullet",
+      shape: "angular",
       axis: {
         range: [0, bound],
-        visible: metric === "Ratio",
-        tickmode: metric === "Ratio" ? "array" : undefined,
-        tickvals: metric === "Ratio" ? [0, 1, bound] : undefined,
+        visible: true,
+        tickmode: "array",
+        tickvals: metric === "Ratio"
+          ? [0, 1, bound]
+          : [0, bound],
         ticktext: metric === "Ratio"
           ? ["0", "1.0", formatNumber(bound)]
-          : undefined,
-        tickfont: metric === "Ratio"
-          ? { size: 8, color: "#7f91a5" }
-          : undefined
+          : ["0", formatNumber(bound)],
+        tickfont: {
+          size: 9,
+          color: "#7f91a5"
+        }
       },
-      bgcolor: "rgba(255,255,255,.025)",
+      bgcolor: "rgba(255,255,255,.018)",
       borderwidth: 0,
       bar: {
         color: visual.color,
-        thickness: 0.48
+        thickness: 0.34
       }
     };
 
@@ -891,12 +1066,12 @@
       {
         paper_bgcolor: "rgba(0,0,0,0)",
         margin: {
-          l: 12,
-          r: 12,
-          t: metric === "Ratio" ? 5 : 2,
-          b: metric === "Ratio" ? 10 : 6
+          l: 22,
+          r: 22,
+          t: 10,
+          b: 2
         },
-        height: metric === "Ratio" ? 50 : 42
+        height: 150
       },
       { ...plotConfig, displayModeBar: false }
     );
@@ -2140,6 +2315,29 @@
     renderCurrentLevelGrid(frame);
   }
 
+  function folderToDateInput(folder) {
+    const text = String(folder || "");
+
+    if (!/^\d{8}$/.test(text)) return "";
+
+    return `${text.slice(0, 4)}-${text.slice(4, 6)}-${text.slice(6, 8)}`;
+  }
+
+  async function initializeLatestHistoryDate() {
+    try {
+      const folders = await getLatestPushermanFolders(true);
+      const latestFolder = folders[0];
+      const latestDate = folderToDateInput(latestFolder);
+
+      if (!latestDate) return;
+
+      $("historyDate").value = latestDate;
+      $("historyDate").max = latestDate;
+    } catch (error) {
+      console.warn("Could not initialize latest Timelapse date:", error);
+    }
+  }
+
   async function loadHistory() {
     stopPlayback();
     clearError("timelapseError");
@@ -2177,12 +2375,23 @@
   function playbackTick() {
     if (!state.history?.frames.length) return;
 
-    const next =
-      state.frame >= state.history.frames.length - 1
-        ? 0
-        : state.frame + 1;
+    const lastIndex = state.history.frames.length - 1;
 
-    updateFrame(next);
+    if (state.frame >= lastIndex) {
+      state.playbackPassesCompleted += 1;
+
+      if (state.playbackPassesCompleted >= 2) {
+        stopPlayback();
+        $("playButton").title =
+          "Playback complete: two passes finished. Press Play to run again.";
+        return;
+      }
+
+      updateFrame(0);
+      return;
+    }
+
+    updateFrame(state.frame + 1);
   }
 
   function schedulePlayback() {
@@ -2204,7 +2413,15 @@
       return;
     }
 
+    // Every new Play action is allowed a maximum of two passes.
+    state.playbackPassesCompleted = 0;
+
+    if (state.frame >= state.history.frames.length - 1) {
+      updateFrame(0);
+    }
+
     $("playButton").textContent = "❚❚ Pause";
+    $("playButton").title = "Pause timelapse playback";
     schedulePlayback();
   }
 
@@ -3139,17 +3356,32 @@
   }
 
   async function refreshLive() {
-    await Promise.allSettled([
-      loadGauges(),
-      loadVoltra(),
-      loadVisuals(),
-      loadTheoEsBasis()
-    ]);
+    // All refresh entry points share one in-flight request set. This prevents
+    // automatic refresh, manual refresh, and UI changes from creating duplicate
+    // simultaneous GitHub request bursts.
+    if (state.refreshPromise) {
+      return state.refreshPromise;
+    }
 
-    renderSpotPrices();
+    state.refreshPromise = (async () => {
+      await Promise.allSettled([
+        loadGauges(),
+        loadVoltra(),
+        loadVisuals(),
+        loadTheoEsBasis()
+      ]);
 
-    if (state.voltra.length) {
-      renderAllVoltra();
+      renderSpotPrices();
+
+      if (state.voltra.length) {
+        renderAllVoltra();
+      }
+    })();
+
+    try {
+      await state.refreshPromise;
+    } finally {
+      state.refreshPromise = null;
     }
   }
 
@@ -3194,14 +3426,6 @@
     $("greekSelect").addEventListener("change", async (event) => {
       state.greek = event.target.value;
       await focusChanged();
-    });
-
-    $("refreshButton").addEventListener("click", async () => {
-      await refreshLive();
-
-      if (state.view === "timelapse") {
-        await loadHistory();
-      }
     });
 
     $("graphSizeSelect").addEventListener("change", (event) => {
@@ -3275,6 +3499,21 @@
       toggleLivePowerMenu(false);
     });
 
+    $("manualRefreshButton").addEventListener("click", async (event) => {
+      event.stopPropagation();
+      await runManualRefresh();
+    });
+
+    $("manualRefreshModalClose").addEventListener("click", () => {
+      closeManualRefreshNotice();
+    });
+
+    $("manualRefreshModal").addEventListener("click", (event) => {
+      if (event.target === $("manualRefreshModal")) {
+        closeManualRefreshNotice();
+      }
+    });
+
     $("livePowerMenu").addEventListener("click", (event) => {
       event.stopPropagation();
     });
@@ -3326,6 +3565,8 @@
 
     $("resetButton").addEventListener("click", () => {
       stopPlayback();
+      state.playbackPassesCompleted = 0;
+      $("playButton").removeAttribute("title");
       updateFrame(0);
     });
 
@@ -3361,6 +3602,7 @@
     buildGaugeCards();
     initializeSnapshotControls();
     initLivePowerControl();
+    initManualRefreshControl();
     renderRepos();
     wireEvents();
 
@@ -3369,11 +3611,15 @@
 
     $("lastRefresh").textContent = "Loading latest data…";
 
+    // Timelapse defaults dynamically to the newest Pusherman YYYYMMDD folder.
+    await initializeLatestHistoryDate();
+
     // Startup behavior: load the newest data once, then stay static until
     // the user manually refreshes or powers on automatic live refresh.
     await refreshLive();
 
     updateLivePowerUI();
+    updateManualRefreshUI();
   }
 
   init();
